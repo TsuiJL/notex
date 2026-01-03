@@ -89,6 +89,17 @@ func (a *Agent) GenerateTransformation(ctx context.Context, req *TransformationR
 	)
 	prompt.TemplateFormat = prompts.TemplateFormatFString
 
+	promptValue, err := prompt.Format(map[string]any{
+		"sources": sourceContext.String(),
+		"type":    req.Type,
+		"length":  req.Length,
+		"format":  req.Format,
+		"prompt":  req.Prompt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to format prompt: %w", err)
+	}
+
 	// Generate response
 	ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
