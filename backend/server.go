@@ -534,7 +534,7 @@ func (s *Server) handleTransform(c *gin.Context) {
 	// If type is ppt, generate images for each slide
 	if req.Type == "ppt" {
 		slides := s.agent.ParsePPTSlides(response.Content)
-		if len(slides) > 20 {
+		if len(slides) > 10 {
 			golog.Errorf("ppt contains too many slides (%d), maximum allowed is 20. skipping image generation.", len(slides))
 			metadata["image_error"] = "PPT页数超过20页上限，已停止生成图片"
 		} else {
