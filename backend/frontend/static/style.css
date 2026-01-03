@@ -479,6 +479,7 @@ body {
 .transform-card[data-type="timeline"] { background-color: #e0f7f6 !important; color: #004d40 !important; }
 .transform-card[data-type="glossary"] { background-color: #fff7ed !important; color: #e65100 !important; }
 .transform-card[data-type="quiz"] { background-color: #f7fee7 !important; color: #33691e !important; }
+.transform-card[data-type="mindmap"] { background-color: #f0f9ff !important; color: #0369a1 !important; }
 
 .transform-custom-pill {
     display: flex;
@@ -1284,6 +1285,22 @@ body {
     height: auto;
     border-radius: var(--radius-md);
     margin: 1em 0;
+}
+
+.mermaid-diagram {
+    display: flex;
+    justify-content: center;
+    margin: 2em 0;
+    padding: var(--space-lg);
+    background: #ffffff;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    overflow-x: auto;
+}
+
+.mermaid-diagram svg {
+    max-width: 100%;
+    height: auto;
 }
 
 .markdown-content dl {

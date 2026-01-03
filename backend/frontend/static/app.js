@@ -693,6 +693,79 @@ class OpenNotebook {
         const chatWrapper = document.querySelector('.chat-messages-wrapper');
         chatWrapper.insertAdjacentHTML('afterend', noteViewHTML);
 
+        // Render Mermaid diagrams if any
+        if (window.mermaid) {
+            try {
+                mermaid.initialize({ 
+                    startOnLoad: false, 
+                    theme: 'default',
+                    securityLevel: 'loose',
+                    fontFamily: 'var(--font-sans)',
+                    mindmap: { useMaxWidth: true }
+                });
+                
+                const contentArea = document.querySelector('.note-view-content');
+                const mermaidBlocks = contentArea.querySelectorAll('pre code.language-mermaid');
+                
+                // Helper to fix common mermaid errors
+                const sanitizeMermaid = (code) => {
+                    let sanitized = code.trim();
+                    
+                    // 1. If it's a graph and has unquoted brackets, try to wrap them
+                    if (sanitized.startsWith('graph')) {
+                        // Fix things like: A --> socket() --> B
+                        sanitized = sanitized.replace(/(\s+)-->(\s+)([^"\s][^-\n>]*\([^)]*\)[^-\n>]*)/g, '$1-->$2"$3"');
+                        sanitized = sanitized.replace(/([^"\s][^-\n>]*\([^)]*\)[^-\n>]*)\s+-->/g, '"$1" -->');
+                    }
+                    
+                    // 2. Fix mindmap roots if missing double parens
+                    if (sanitized.startsWith('mindmap')) {
+                        const lines = sanitized.split('\n');
+                        for (let i = 0; i < lines.length; i++) {
+                            if (lines[i].trim().startsWith('root') && !lines[i].includes('((')) {
+                                lines[i] = lines[i].replace(/root\s+(.+)/, 'root(($1))');
+                            }
+                        }
+                        sanitized = lines.join('\n');
+                    }
+                    
+                    return sanitized;
+                };
+
+                for (let i = 0; i < mermaidBlocks.length; i++) {
+                    const block = mermaidBlocks[i];
+                    const pre = block.parentElement;
+                    const rawCode = block.textContent;
+                    const cleanCode = sanitizeMermaid(rawCode);
+                    
+                    const id = `mermaid-diag-${Date.now()}-${i}`;
+                    
+                    try {
+                        const { svg } = await mermaid.render(id, cleanCode);
+                        const container = document.createElement('div');
+                        container.className = 'mermaid-diagram';
+                        container.innerHTML = svg;
+                        pre.parentNode.replaceChild(container, pre);
+                    } catch (renderErr) {
+                        console.error('Mermaid Render Error:', renderErr);
+                        // Final fallback: If rendering failed, try one more time by stripping ALL parentheses from labels
+                        try {
+                            const lastResort = cleanCode.replace(/\(|\)/g, '');
+                            const { svg } = await mermaid.render(`${id}-retry`, lastResort);
+                            const container = document.createElement('div');
+                            container.className = 'mermaid-diagram';
+                            container.innerHTML = svg;
+                            pre.parentNode.replaceChild(container, pre);
+                        } catch (e) {
+                            pre.innerHTML = `<div style="color:red; font-size:12px; padding:10px;">渲染失败: ${renderErr.message}</div>`;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Mermaid general error:', err);
+            }
+        }
+
         // Switch to note tab
         this.switchPanelTab('note');
 
@@ -756,7 +829,8 @@ class OpenNotebook {
         const customPrompt = document.getElementById('customPrompt').value;
         const nameMap = {
             summary: '摘要', faq: '常见问题', study_guide: '学习指南', outline: '大纲',
-            podcast: '播客', timeline: '时间线', glossary: '术语表', quiz: '测验'
+            podcast: '播客', timeline: '时间线', glossary: '术语表', quiz: '测验',
+            mindmap: '思维导图'
         };
         const typeName = nameMap[type] || '内容';
 
