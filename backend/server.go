@@ -84,6 +84,9 @@ func NewServer(cfg Config) (*Server, error) {
 
 // setupRoutes configures all routes
 func (s *Server) setupRoutes() {
+	// Apply audit middleware to all routes
+	s.http.Use(AuditMiddlewareLite())
+
 	// Serve static files from embedded filesystem
 	staticFS, _ := fs.Sub(frontendFS, "frontend/static")
 	s.http.StaticFS("/static", http.FS(staticFS))
