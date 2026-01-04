@@ -520,7 +520,7 @@ func (s *Server) handleTransform(c *gin.Context) {
 	if req.Type == "infograph" {
 		extra := "**注意：无论来源是什么语言，请务必使用中文**"
 		prompt := response.Content + "\n\n" + extra
-		imagePath, err := s.agent.GenerateImage(ctx, "gemini-3-pro-image-preview", prompt)
+		imagePath, err := s.agent.provider.GenerateImage(ctx, "gemini-3-pro-image-preview", prompt)
 		if err != nil {
 			golog.Errorf("failed to generate infographic image: %v", err)
 			metadata["image_error"] = err.Error()
@@ -546,7 +546,7 @@ func (s *Server) handleTransform(c *gin.Context) {
 				// Combine style and slide content for the image generator
 				prompt := fmt.Sprintf("Style: %s\n\nSlide Content: %s", slides[0].Style, slide.Content)
 				prompt += "\n\n**注意：无论来源是什么语言，请务必使用中文**\n"
-				imagePath, err := s.agent.GenerateImage(ctx, "gemini-3-pro-image-preview", prompt)
+				imagePath, err := s.agent.provider.GenerateImage(ctx, "gemini-3-pro-image-preview", prompt)
 				if err != nil {
 					golog.Errorf("failed to generate slide %d: %v", i+1, err)
 					continue

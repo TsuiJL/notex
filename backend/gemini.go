@@ -10,19 +10,39 @@ import (
 	"time"
 
 	"github.com/kataras/golog"
+	"github.com/tmc/langchaingo/llms"
 	"google.golang.org/genai"
 )
 
-// GenerateInfographImage generates an infographic image using the Nano Banana Pro SDK
-func (a *Agent) GenerateInfographImage(ctx context.Context, prompt string) (string, error) {
-	prompt += "\n\n **注意：无论来源是什么语言，请务必使用中文**\n"
-	// Using gemini-3-pro-image-preview as requested
-	return a.GenerateImage(ctx, "gemini-3-pro-image-preview", prompt)
+// LLMProvider defines the interface for LLM operations
+type LLMProvider interface {
+	// GenerateImage generates an image using the provider
+	GenerateImage(ctx context.Context, model, prompt string) (string, error)
+
+	// GenerateTextWithModel generates text using a specific model
+	GenerateTextWithModel(ctx context.Context, prompt string, model string) (string, error)
+
+	// GenerateFromSinglePrompt generates text from a single prompt using the default LLM
+	GenerateFromSinglePrompt(ctx context.Context, llm llms.Model, prompt string, options ...llms.CallOption) (string, error)
 }
 
-// GenerateImage generates an image using the Nano Banana Pro SDK
-func (a *Agent) GenerateImage(ctx context.Context, model, prompt string) (string, error) {
-	if a.cfg.GoogleAPIKey == "" {
+// GeminiClient is the default implementation of LLMProvider using Google GenAI
+type GeminiClient struct {
+	googleAPIKey string
+	llm          llms.Model // maybe other llm except gemini for chat/summary etc.
+}
+
+// NewGeminiClient creates a new GeminiClient
+func NewGeminiClient(googleAPIKey string, llm llms.Model) *GeminiClient {
+	return &GeminiClient{
+		googleAPIKey: googleAPIKey,
+		llm:          llm,
+	}
+}
+
+// GenerateImage generates an image using the Google GenAI SDK
+func (n *GeminiClient) GenerateImage(ctx context.Context, model, prompt string) (string, error) {
+	if n.googleAPIKey == "" {
 		golog.Errorf("google_api_key is not set")
 		return "", fmt.Errorf("google_api_key is not set")
 	}
@@ -37,7 +57,7 @@ func (a *Agent) GenerateImage(ctx context.Context, model, prompt string) (string
 	}
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:     a.cfg.GoogleAPIKey,
+		APIKey:     n.googleAPIKey,
 		Backend:    genai.BackendGeminiAPI,
 		HTTPClient: httpClient,
 	})
@@ -108,9 +128,9 @@ func (a *Agent) GenerateImage(ctx context.Context, model, prompt string) (string
 	return "", fmt.Errorf("failed to generate image after 3 attempts: %w", lastErr)
 }
 
-// GenerateGeminiText generates text using the Google GenAI SDK with a specific model
-func (a *Agent) GenerateGeminiText(ctx context.Context, prompt string, model string) (string, error) {
-	if a.cfg.GoogleAPIKey == "" {
+// GenerateTextWithModel generates text using the Google GenAI SDK with a specific model
+func (n *GeminiClient) GenerateTextWithModel(ctx context.Context, prompt string, model string) (string, error) {
+	if n.googleAPIKey == "" {
 		golog.Errorf("google_api_key is not set")
 		return "", fmt.Errorf("google_api_key is not set")
 	}
@@ -125,7 +145,7 @@ func (a *Agent) GenerateGeminiText(ctx context.Context, prompt string, model str
 	}
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:     a.cfg.GoogleAPIKey,
+		APIKey:     n.googleAPIKey,
 		Backend:    genai.BackendGeminiAPI,
 		HTTPClient: httpClient,
 	})
@@ -164,4 +184,9 @@ func (a *Agent) GenerateGeminiText(ctx context.Context, prompt string, model str
 	}
 
 	return result, nil
+}
+
+// GenerateFromSinglePrompt generates text from a single prompt using the specified LLM
+func (n *GeminiClient) GenerateFromSinglePrompt(ctx context.Context, llm llms.Model, prompt string, options ...llms.CallOption) (string, error) {
+	return llms.GenerateFromSinglePrompt(ctx, n.llm, prompt, options...)
 }
