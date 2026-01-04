@@ -137,3 +137,8 @@ type HealthResponse struct {
 	Timestamp int64             `json:"timestamp"`
 	Services  map[string]string `json:"services"`
 }
+
+// ConfigResponse represents the client configuration
+type ConfigResponse struct {
+	AllowDelete bool `json:"allow_delete"`
+}

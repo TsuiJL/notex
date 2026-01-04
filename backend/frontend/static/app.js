@@ -4,15 +4,41 @@ class OpenNotebook {
         this.currentNotebook = null;
         this.apiBase = '/api';
         this.currentChatSession = null;
+        this.config = {
+            allowDelete: true
+        };
 
         this.init();
     }
 
     async init() {
+        await this.loadConfig();
         this.bindEvents();
         this.initResizers();
         this.switchView('landing');
         await this.loadNotebooks();
+        this.applyConfig();
+    }
+
+    async loadConfig() {
+        try {
+            const config = await this.api('/config');
+            this.config = config;
+        } catch (error) {
+            console.error('Failed to load config:', error);
+        }
+    }
+
+    applyConfig() {
+        // Show/hide delete buttons based on allowDelete config
+        const deleteButtons = document.querySelectorAll('.btn-delete, .btn-remove-source, .btn-delete-note');
+        deleteButtons.forEach(btn => {
+            if (this.config.allowDelete) {
+                btn.style.display = '';
+            } else {
+                btn.style.display = 'none';
+            }
+        });
     }
 
     initResizers() {
@@ -243,12 +269,18 @@ class OpenNotebook {
                 }
             });
 
-            card.querySelector('.btn-delete-card').addEventListener('click', (e) => {
+            const deleteCardBtn = card.querySelector('.btn-delete-card');
+            deleteCardBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (confirm('确定要删除此笔记本吗？')) {
                     this.deleteNotebook(nb.id);
                 }
             });
+
+            // Apply config to delete button
+            if (!this.config.allowDelete) {
+                deleteCardBtn.style.display = 'none';
+            }
 
             container.appendChild(clone);
         });
@@ -553,9 +585,15 @@ class OpenNotebook {
                 const icon = this.getSourceIcon(source.type);
                 card.querySelector('.source-icon').innerHTML = icon;
 
-                card.querySelector('.btn-remove-source').addEventListener('click', () => {
+                const removeBtn = card.querySelector('.btn-remove-source');
+                removeBtn.addEventListener('click', () => {
                     this.removeSource(source.id);
                 });
+
+                // Apply config to delete button
+                if (!this.config.allowDelete) {
+                    removeBtn.style.display = 'none';
+                }
 
                 container.appendChild(clone);
             });
@@ -571,6 +609,7 @@ class OpenNotebook {
             file: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 4 L24 4 L30 10 L30 36 L10 36 Z"/><polyline points="24,4 24,10 30,10"/></svg>',
             text: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 6 L32 6"/><path d="M8 12 L32 12"/><path d="M8 18 L28 18"/><path d="M8 24 L32 24"/><path d="M8 30 L24 30"/></svg>',
             url: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20 C12 14 16 10 22 10 C28 10 32 14 32 20 C32 26 28 30 22 30"/><path d="M28 20 C28 26 24 30 18 30 C12 30 8 26 8 20 C8 14 12 10 18 10"/></svg>',
+            insight: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="20" cy="20" r="14"/><path d="M20 12 L20 22"/><path d="M20 26 L20 28"/><circle cx="20" cy="20" r="8" stroke-dasharray="2 2"/></svg>',
         };
         return icons[type] || icons.file;
     }
@@ -751,9 +790,15 @@ class OpenNotebook {
                 item.querySelector('.note-date').textContent = this.formatDate(note.created_at);
                 item.querySelector('.note-sources').textContent = `${note.source_ids?.length || 0} 来源`;
 
-                item.querySelector('.btn-delete-note').addEventListener('click', () => {
+                const deleteBtn = item.querySelector('.btn-delete-note');
+                deleteBtn.addEventListener('click', () => {
                     this.deleteNote(note.id);
                 });
+
+                // Apply config to delete button
+                if (!this.config.allowDelete) {
+                    deleteBtn.style.display = 'none';
+                }
 
                 item.addEventListener('click', (e) => {
                     if (!e.target.closest('.btn-delete-note')) {
@@ -1102,7 +1147,12 @@ class OpenNotebook {
             
             // 恢复删除按钮并绑定事件
             if (delBtn) {
-                delBtn.style.display = 'flex';
+                // Apply config to delete button
+                if (this.config.allowDelete) {
+                    delBtn.style.display = 'flex';
+                } else {
+                    delBtn.style.display = 'none';
+                }
                 delBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.deleteNote(note.id);
@@ -1120,6 +1170,11 @@ class OpenNotebook {
             this.updateFooter();
             document.getElementById('customPrompt').value = '';
             this.setStatus(`成功生成 ${typeName}`);
+
+            // If type is insight, refresh sources list to show the injected insight report
+            if (type === 'insight') {
+                await this.loadSources();
+            }
 
             // If notes_list tab is active or visible, refresh it
             const tabBtnNotesList = document.getElementById('tabBtnNotesList');

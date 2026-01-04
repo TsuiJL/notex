@@ -39,6 +39,9 @@ func getTransformationPrompt(transformType string) string {
 	case "custom":
 		return customPrompt()
 
+	case "insight":
+		return insightPrompt()
+
 	default:
 		return defaultPrompt()
 	}
@@ -393,6 +396,16 @@ func customPrompt() string {
 {prompt}
 
 请以{format}格式生成内容，保持{length}。`
+}
+
+func insightPrompt() string {
+	return `你是一个擅长创建综合摘要的专家。请根据以下来源，生成一个简洁的摘要。
+**注意：无论来源是什么语言，请务必使用中文进行回复。**
+
+来源：
+{sources}
+
+请提供一个简洁的摘要，捕捉来源中的关键信息、主要主题和重要细节。摘要将被用于后续的深度洞察分析。`
 }
 
 func defaultPrompt() string {

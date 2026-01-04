@@ -48,6 +48,9 @@ type Config struct {
 	// Document conversion
 	EnableMarkitdown   bool
 
+	// Demo settings
+	AllowDelete        bool
+
 	// LangSmith tracing (optional)
 	LangChainAPIKey    string
 	LangChainProject   string
@@ -92,6 +95,7 @@ func LoadConfig() Config {
 		EnablePodcast:    getEnvBool("ENABLE_PODCAST", true),
 		PodcastVoice:     getEnv("PODCAST_VOICE", "alloy"),
 		EnableMarkitdown: getEnvBool("ENABLE_MARKITDOWN", true),
+		AllowDelete:      getEnvBool("ALLOW_DELETE", true),
 		LangChainAPIKey:  getEnv("LANGCHAIN_API_KEY", ""),
 		LangChainProject: getEnv("LANGCHAIN_PROJECT", "open-notebook"),
 	}

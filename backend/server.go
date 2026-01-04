@@ -104,6 +104,7 @@ func (s *Server) setupRoutes() {
 	{
 		// Health check
 		api.GET("/health", s.handleHealth)
+		api.GET("/config", s.handleConfig)
 
 		// Notebook routes
 		notebooks := api.Group("/notebooks")
@@ -159,6 +160,12 @@ func (s *Server) handleHealth(c *gin.Context) {
 			"vector_store": s.cfg.VectorStoreType,
 			"llm":          s.cfg.OpenAIModel,
 		},
+	})
+}
+
+func (s *Server) handleConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, ConfigResponse{
+		AllowDelete: s.cfg.AllowDelete,
 	})
 }
 
@@ -570,6 +577,29 @@ func (s *Server) handleTransform(c *gin.Context) {
 	if err := s.store.CreateNote(ctx, note); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to save note"})
 		return
+	}
+
+	// If type is insight, inject the insight report as a new source
+	if req.Type == "insight" {
+		insightSource := &Source{
+			NotebookID: notebookID,
+			Name:       "洞察报告",
+			Type:       "insight",
+			Content:    response.Content,
+			Metadata: map[string]interface{}{
+				"generated_at": time.Now(),
+				"source_ids":   req.SourceIDs,
+			},
+		}
+
+		if err := s.store.CreateSource(ctx, insightSource); err != nil {
+			golog.Errorf("failed to create insight source: %v", err)
+		} else {
+			// Ingest into vector store for future reference
+			if err := s.vectorStore.IngestText(ctx, insightSource.Name, insightSource.Content); err != nil {
+				golog.Errorf("failed to ingest insight text: %v", err)
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, note)

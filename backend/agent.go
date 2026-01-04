@@ -3,10 +3,12 @@ package backend
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/kataras/golog"
 	"github.com/tmc/langchaingo/llms"
 	ollamallm "github.com/tmc/langchaingo/llms/ollama"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -111,6 +113,22 @@ func (a *Agent) GenerateTransformation(ctx context.Context, req *TransformationR
 
 	if req.Type == "ppt" {
 		response, genErr = a.provider.GenerateTextWithModel(ctx, promptValue, "gemini-3-flash-preview")
+	} else if req.Type == "insight" {
+		// For insight type: first generate a summary, then call DeepInsight
+		ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
+		defer cancel()
+
+		// Step 1: Generate summary
+		summary, err := a.provider.GenerateFromSinglePrompt(ctx, a.llm, promptValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate summary: %w", err)
+		}
+
+		// Step 2: Call DeepInsight with the summary
+		response, err = a.callDeepInsight(ctx, summary)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate deep insight: %w", err)
+		}
 	} else {
 		ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
@@ -377,4 +395,47 @@ func (a *Agent) GenerateSummary(ctx context.Context, sources []Source, length st
 	}
 
 	return resp.Content, nil
+}
+
+// callDeepInsight executes the DeepInsight CLI tool and returns the generated report
+func (a *Agent) callDeepInsight(ctx context.Context, summary string) (string, error) {
+	// Create a temporary file for the report output
+	tmpFile := "./tmp/deepinsight_report_" + fmt.Sprintf("%d", time.Now().Unix()) + ".md"
+
+	// Execute DeepInsight command
+	// DeepInsight -o report.md "summary text"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	output, err := execCommandContext(ctx, "./DeepInsight", "-o", tmpFile, escapeShellArg(summary))
+	if err != nil {
+		golog.Infof("failed to exec DeepInsight: err=%v, output=%s", err, output)
+		return "", fmt.Errorf("DeepInsight command failed: %w, output: %s", err, output)
+	}
+
+	// Read the generated report
+	reportContent, err := execCommandContext(ctx, "/bin/cat", tmpFile)
+	if err != nil {
+		golog.Infof("failed to read DeepInsight report: err=%v, output=%s", err, output)
+		return "", fmt.Errorf("failed to read DeepInsight report: %w", err)
+	}
+
+	// Clean up temp file
+	_, _ = execCommandContext(context.Background(), "/bin/rm", "-f", tmpFile)
+
+	return reportContent, nil
+}
+
+// escapeShellArg escapes a shell argument to prevent injection
+func escapeShellArg(arg string) string {
+	return "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
+}
+
+// execCommandContext is a helper to execute commands with context
+func execCommandContext(ctx context.Context, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), err
+	}
+	return string(output), nil
 }
