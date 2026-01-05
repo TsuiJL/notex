@@ -298,7 +298,7 @@ func (s *Server) handleAddSource(c *gin.Context) {
 	}
 
 	// If URL is provided and Content is empty, fetch content from URL
-	if req.URL != "" && req.Content == "" {
+	if req.URL != "" {
 		golog.Infof("fetching content from URL: %s", req.URL)
 		content, err := s.vectorStore.ExtractFromURL(ctx, req.URL)
 		if err != nil {

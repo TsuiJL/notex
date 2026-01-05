@@ -4,11 +4,45 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kataras/golog"
+	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
 )
+
+var auditLogger *golog.Logger
+
+func init() {
+	// Create audit logger
+	auditLogger = golog.New()
+
+	// Create logs directory if not exists
+	if err := os.MkdirAll("./logs", 0755); err != nil {
+		golog.Errorf("failed to create logs directory: %v", err)
+	}
+
+	// Setup log rotation
+	logFiles := "./logs/audit.log.%Y%m%d"
+	writer, err := rotatelogs.New(
+		logFiles,
+		rotatelogs.WithLinkName("./logs/audit.log"),
+		rotatelogs.WithMaxAge(time.Duration(7)*24*time.Hour),
+		rotatelogs.WithRotationTime(24*time.Hour),
+	)
+	if err != nil {
+		golog.Errorf("failed to create rotatelogs writer: %v", err)
+		auditLogger.SetOutput(os.Stdout)
+	} else {
+		// Write to both file and stdout
+		auditLogger.SetOutput(io.MultiWriter(writer, os.Stdout))
+	}
+
+	// Set audit logger configuration
+	auditLogger.SetLevel("info")
+	auditLogger.SetTimeFormat("2006-01-02 15:04:05")
+}
 
 // getClientIP extracts the real client IP from the request, taking into account
 // proxies and load balancers that set X-Forwarded-For, X-Real-IP, etc.
@@ -112,7 +146,7 @@ func AuditMiddleware() gin.HandlerFunc {
 			msg += fmt.Sprintf(" errors=%s", c.Errors.String())
 		}
 
-		golog.Info(msg)
+		auditLogger.Info(msg)
 	}
 }
 
@@ -139,6 +173,6 @@ func AuditMiddlewareLite() gin.HandlerFunc {
 			msg += fmt.Sprintf(" errors=%s", c.Errors.String())
 		}
 
-		golog.Info(msg)
+		auditLogger.Info(msg)
 	}
 }
