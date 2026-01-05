@@ -84,18 +84,17 @@ func NewServer(cfg Config) (*Server, error) {
 
 // setupRoutes configures all routes
 func (s *Server) setupRoutes() {
-	// Apply audit middleware to all routes
-	s.http.Use(AuditMiddlewareLite())
-
-	// Serve static files from embedded filesystem
+	// Serve static files from embedded filesystem (no audit)
 	staticFS, _ := fs.Sub(frontendFS, "frontend/static")
 	s.http.StaticFS("/static", http.FS(staticFS))
 
-	// Serve uploaded files
-	s.http.Static("/uploads", "./data/uploads")
+	// Serve uploaded files (with audit)
+	uploads := s.http.Group("/uploads")
+	uploads.Use(AuditMiddlewareLite())
+	uploads.Static("/", "./data/uploads")
 
-	// Serve index.html at root - need to serve from root of frontendFS
-	s.http.GET("/", func(c *gin.Context) {
+	// Serve index.html at root (with audit)
+	s.http.GET("/", AuditMiddlewareLite(), func(c *gin.Context) {
 		c.Header("Cache-Control", "no-cache")
 		content, _ := frontendFS.ReadFile("frontend/index.html")
 		c.Data(http.StatusOK, "text/html; charset=utf-8", content)
@@ -103,6 +102,7 @@ func (s *Server) setupRoutes() {
 
 	// API routes
 	api := s.http.Group("/api")
+	api.Use(AuditMiddlewareLite()) // Only audit API routes, not static resources
 	{
 		// Health check
 		api.GET("/health", s.handleHealth)
@@ -295,6 +295,19 @@ func (s *Server) handleAddSource(c *gin.Context) {
 		URL:        req.URL,
 		Content:    req.Content,
 		Metadata:   req.Metadata,
+	}
+
+	// If URL is provided and Content is empty, fetch content from URL
+	if req.URL != "" && req.Content == "" {
+		golog.Infof("fetching content from URL: %s", req.URL)
+		content, err := s.vectorStore.ExtractFromURL(ctx, req.URL)
+		if err != nil {
+			golog.Errorf("failed to fetch URL content: %v", err)
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("Failed to fetch URL content: %v", err)})
+			return
+		}
+		source.Content = content
+		golog.Infof("URL content fetched successfully, size: %d bytes", len(content))
 	}
 
 	if err := s.store.CreateSource(ctx, source); err != nil {

@@ -322,6 +322,38 @@ func (vs *VectorStore) needsMarkitdown(ext string) bool {
 	return markitdownExts[ext]
 }
 
+// ExtractFromURL fetches and converts content from a URL using markitdown
+func (vs *VectorStore) ExtractFromURL(ctx context.Context, url string) (string, error) {
+	fmt.Printf("[VectorStore] Fetching content from URL: %s\n", url)
+
+	if !vs.cfg.EnableMarkitdown {
+		return "", fmt.Errorf("markitdown is disabled, cannot fetch URL content")
+	}
+
+	// Create temporary output file
+	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("markitdown_url_%d.md", os.Getpid()))
+
+	// Run markitdown command with URL
+	cmd := exec.Command("markitdown", url, "-o", tmpFile)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("[VectorStore] markitdown error: %s\n", string(output))
+		return "", fmt.Errorf("failed to fetch URL content: %w, output: %s", err, string(output))
+	}
+
+	// Read the converted markdown content
+	content, err := os.ReadFile(tmpFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read markitdown output: %w", err)
+	}
+
+	// Clean up temporary file
+	os.Remove(tmpFile)
+
+	fmt.Printf("[VectorStore] URL content fetched successfully, output size: %d bytes\n", len(content))
+	return string(content), nil
+}
+
 // convertWithMarkitdown converts a document to Markdown using the markitdown CLI tool
 func (vs *VectorStore) convertWithMarkitdown(filePath string) (string, error) {
 	fmt.Printf("[VectorStore] Converting with markitdown: %s\n", filePath)
