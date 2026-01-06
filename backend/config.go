@@ -49,7 +49,8 @@ type Config struct {
 	EnableMarkitdown   bool
 
 	// Demo settings
-	AllowDelete        bool
+	AllowDelete                      bool
+	AllowMultipleNotesOfSameType     bool
 
 	// LangSmith tracing (optional)
 	LangChainAPIKey    string
@@ -94,8 +95,9 @@ func LoadConfig() Config {
 		ChunkOverlap:     getEnvInt("CHUNK_OVERLAP", 200),
 		EnablePodcast:    getEnvBool("ENABLE_PODCAST", true),
 		PodcastVoice:     getEnv("PODCAST_VOICE", "alloy"),
-		EnableMarkitdown: getEnvBool("ENABLE_MARKITDOWN", true),
-		AllowDelete:      getEnvBool("ALLOW_DELETE", true),
+		EnableMarkitdown:           getEnvBool("ENABLE_MARKITDOWN", true),
+		AllowDelete:                getEnvBool("ALLOW_DELETE", true),
+		AllowMultipleNotesOfSameType: getEnvBool("ALLOW_MULTIPLE_NOTES_OF_SAME_TYPE", true),
 		LangChainAPIKey:  getEnv("LANGCHAIN_API_KEY", ""),
 		LangChainProject: getEnv("LANGCHAIN_PROJECT", "open-notebook"),
 	}

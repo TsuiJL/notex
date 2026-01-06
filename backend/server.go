@@ -497,6 +497,21 @@ func (s *Server) handleTransform(c *gin.Context) {
 		return
 	}
 
+	// Check if multiple notes of same type are allowed
+	if !s.cfg.AllowMultipleNotesOfSameType {
+		existingNotes, err := s.store.ListNotes(ctx, notebookID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check existing notes"})
+			return
+		}
+		for _, note := range existingNotes {
+			if note.Type == req.Type {
+				c.JSON(http.StatusConflict, ErrorResponse{Error: "该笔记本已存在相同类型的笔记，不允许创建重复类型"})
+				return
+			}
+		}
+	}
+
 	// Get sources
 	sources, err := s.store.ListSources(ctx, notebookID)
 	if err != nil {
