@@ -165,6 +165,4 @@ type HealthResponse struct {
 
 // ConfigResponse represents the client configuration
 type ConfigResponse struct {
-	AllowDelete         bool `json:"allow_delete"`
-	AllowNotebookRename bool `json:"allow_notebook_rename"`
 }

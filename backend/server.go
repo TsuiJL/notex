@@ -99,12 +99,11 @@ func (s *Server) setupRoutes() {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", content)
 	})
 
-	// Auth routes
+	// Auth routes (OAuth - no auth required)
 	auth := s.http.Group("/auth")
 	{
 		auth.GET("/login/:provider", s.auth.HandleLogin)
 		auth.GET("/callback/:provider", s.auth.HandleCallback)
-		auth.GET("/me", AuthMiddleware(s.cfg.JWTSecret), s.auth.HandleMe)
 	}
 
 	// API routes
@@ -115,6 +114,9 @@ func (s *Server) setupRoutes() {
 		// Health check
 		api.GET("/health", s.handleHealth)
 		api.GET("/config", s.handleConfig)
+
+		// Auth API (get current user)
+		api.GET("/auth/me", s.auth.HandleMe)
 
 		// File serving with user isolation - must be authenticated
 		api.GET("/files/:filename", s.handleServeFile)
@@ -210,10 +212,7 @@ func (s *Server) handleHealth(c *gin.Context) {
 }
 
 func (s *Server) handleConfig(c *gin.Context) {
-	c.JSON(http.StatusOK, ConfigResponse{
-		AllowDelete:         s.cfg.AllowDelete,
-		AllowNotebookRename: s.cfg.AllowNotebookRename,
-	})
+	c.JSON(http.StatusOK, ConfigResponse{})
 }
 
 // Notebook handlers

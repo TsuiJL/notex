@@ -127,9 +127,6 @@ class OpenNotebook {
         this.currentNotebook = null;
         this.apiBase = '/api';
         this.currentChatSession = null;
-        this.config = {
-            allowDelete: true
-        };
 
         // Auth state
         this.token = localStorage.getItem('token');
@@ -173,29 +170,11 @@ class OpenNotebook {
     }
 
     async loadConfig() {
-        try {
-            const config = await this.api('/config');
-            // Convert snake_case to camelCase
-            this.config = {
-                allowDelete: config.allow_delete !== undefined ? config.allow_delete : true,
-                allowNotebookRename: config.allow_notebook_rename !== undefined ? config.allow_notebook_rename : true
-            };
-        } catch (error) {
-            console.error('Failed to load config:', error);
-        }
+        // Config loading - no longer needed, all features enabled
     }
 
     applyConfig() {
-        // Show/hide delete buttons based on allowDelete config
-        const deleteButtons = document.querySelectorAll('.btn-delete, .btn-remove-source, .btn-delete-note, .btn-delete-card, .btn-delete-notebook, .btn-delete-compact-note');
-        deleteButtons.forEach(btn => {
-            if (this.config.allowDelete) {
-                btn.style.display = '';
-                btn.style.opacity = '1';
-            } else {
-                btn.style.display = 'none';
-            }
-        });
+        // All features enabled by default, no config to apply
     }
 
     initResizers() {
@@ -255,11 +234,13 @@ class OpenNotebook {
 
         safeAddEventListener('btnNewNotebook', 'click', () => this.showNewNotebookModal());
         safeAddEventListener('btnNewNotebookLanding', 'click', () => this.showNewNotebookModal());
-        
+
         // Auth events
         safeAddEventListener('btnLogin', 'click', () => this.handleLogin());
         safeAddEventListener('btnLogout', 'click', () => this.handleLogout());
-        
+        safeAddEventListener('btnLoginWorkspace', 'click', () => this.handleLogin());
+        safeAddEventListener('btnLogoutWorkspace', 'click', () => this.handleLogout());
+
         safeAddEventListener('btnBackToList', 'click', () => this.switchView('landing'));
         safeAddEventListener('btnToggleRight', 'click', () => this.toggleRightPanel());
         safeAddEventListener('btnToggleLeft', 'click', () => this.toggleLeftPanel());
@@ -407,20 +388,39 @@ class OpenNotebook {
     }
 
     updateAuthUI() {
+        // Landing page auth UI
         const authContainer = document.getElementById('authContainer');
         const btnLogin = document.getElementById('btnLogin');
         const userProfile = document.getElementById('userProfile');
         const userAvatar = document.getElementById('userAvatar');
         const userName = document.getElementById('userName');
 
+        // Workspace auth UI
+        const btnLoginWorkspace = document.getElementById('btnLoginWorkspace');
+        const userProfileWorkspace = document.getElementById('userProfileWorkspace');
+        const userAvatarWorkspace = document.getElementById('userAvatarWorkspace');
+        const userNameWorkspace = document.getElementById('userNameWorkspace');
+
         if (this.currentUser) {
-            btnLogin.classList.add('hidden');
-            userProfile.classList.remove('hidden');
-            userAvatar.src = this.currentUser.avatar_url;
-            userName.textContent = this.currentUser.name;
+            // Update landing page
+            if (btnLogin) btnLogin.classList.add('hidden');
+            if (userProfile) userProfile.classList.remove('hidden');
+            if (userAvatar) userAvatar.src = this.currentUser.avatar_url;
+            if (userName) userName.textContent = this.currentUser.name;
+
+            // Update workspace
+            if (btnLoginWorkspace) btnLoginWorkspace.classList.add('hidden');
+            if (userProfileWorkspace) userProfileWorkspace.classList.remove('hidden');
+            if (userAvatarWorkspace) userAvatarWorkspace.src = this.currentUser.avatar_url;
+            if (userNameWorkspace) userNameWorkspace.textContent = this.currentUser.name;
         } else {
-            btnLogin.classList.remove('hidden');
-            userProfile.classList.add('hidden');
+            // Update landing page
+            if (btnLogin) btnLogin.classList.remove('hidden');
+            if (userProfile) userProfile.classList.add('hidden');
+
+            // Update workspace
+            if (btnLoginWorkspace) btnLoginWorkspace.classList.remove('hidden');
+            if (userProfileWorkspace) userProfileWorkspace.classList.add('hidden');
         }
     }
 
@@ -612,13 +612,6 @@ class OpenNotebook {
                 }
             });
 
-            // Apply config to delete button
-            if (this.config.allowDelete) {
-                deleteCardBtn.style.display = 'flex';
-            } else {
-                deleteCardBtn.style.display = 'none';
-            }
-
             container.appendChild(clone);
         });
     }
@@ -772,13 +765,6 @@ class OpenNotebook {
                     }
                 });
 
-                // Apply config to delete button
-                if (this.config.allowDelete) {
-                    deleteBtn.style.display = 'flex';
-                } else {
-                    deleteBtn.style.display = 'none';
-                }
-
                 card.addEventListener('click', () => this.viewNote(note));
                 container.appendChild(card);
             });
@@ -792,13 +778,7 @@ class OpenNotebook {
 
         const nameDisplay = document.getElementById('currentNotebookName');
         nameDisplay.textContent = this.currentNotebook.name;
-
-        // 设置可编辑状态
-        if (this.config.allowNotebookRename) {
-            nameDisplay.classList.add('editable');
-        } else {
-            nameDisplay.classList.remove('editable');
-        }
+        nameDisplay.classList.add('editable');
 
         this.switchView('workspace');
 
@@ -825,7 +805,6 @@ class OpenNotebook {
 
         // 双击进入编辑模式
         nameDisplay.addEventListener('dblclick', () => {
-            if (!this.config.allowNotebookRename) return;
             this.startEditingNotebookName();
         });
 
@@ -1068,13 +1047,6 @@ class OpenNotebook {
                     this.removeSource(source.id);
                 });
 
-                // Apply config to delete button
-                if (this.config.allowDelete) {
-                    removeBtn.style.display = 'flex';
-                } else {
-                    removeBtn.style.display = 'none';
-                }
-
                 container.appendChild(clone);
             });
 
@@ -1286,13 +1258,6 @@ class OpenNotebook {
                 deleteBtn.addEventListener('click', () => {
                     this.deleteNote(note.id);
                 });
-
-                // Apply config to delete button
-                if (this.config.allowDelete) {
-                    deleteBtn.style.display = 'flex';
-                } else {
-                    deleteBtn.style.display = 'none';
-                }
 
                 item.addEventListener('click', (e) => {
                     if (!e.target.closest('.btn-delete-note')) {
@@ -1702,15 +1667,9 @@ class OpenNotebook {
             
             placeholder.querySelector('.note-preview').textContent = plainText;
             placeholder.querySelector('.note-sources').textContent = `${note.source_ids?.length || 0} 来源`;
-            
+
             // 恢复删除按钮并绑定事件
             if (delBtn) {
-                // Apply config to delete button
-                if (this.config.allowDelete) {
-                    delBtn.style.display = 'flex';
-                } else {
-                    delBtn.style.display = 'none';
-                }
                 delBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.deleteNote(note.id);
