@@ -115,6 +115,10 @@ func (s *Server) setupRoutes() {
 		auth.GET("/callback/:provider", s.auth.HandleCallback)
 	}
 
+	// File serving route - checks notebook public status internally
+	golog.Info("Registering /api/files/:filename route")
+	s.http.GET("/api/files/:filename", AuditMiddlewareLite(), OptionalAuthMiddleware(s.cfg.JWTSecret), s.handleServeFile)
+
 	// API routes
 	api := s.http.Group("/api")
 	api.Use(AuditMiddlewareLite())
@@ -127,9 +131,6 @@ func (s *Server) setupRoutes() {
 		// Auth API (get current user)
 		api.GET("/auth/me", s.auth.HandleMe)
 
-		// File serving with user isolation - must be authenticated
-		api.GET("/files/:filename", s.handleServeFile)
-
 		// Notebook routes
 		notebooks := api.Group("/notebooks")
 		{
@@ -139,6 +140,9 @@ func (s *Server) setupRoutes() {
 			notebooks.GET("/:id", s.handleGetNotebook)
 			notebooks.PUT("/:id", s.handleUpdateNotebook)
 			notebooks.DELETE("/:id", s.handleDeleteNotebook)
+
+			// Public sharing
+			notebooks.PUT("/:id/public", s.handleSetNotebookPublic)
 
 			// Sources within a notebook
 			notebooks.GET("/:id/sources", s.handleListSources)
@@ -166,6 +170,25 @@ func (s *Server) setupRoutes() {
 		// Upload endpoint
 		api.POST("/upload", s.handleUpload)
 	}
+
+	// Public notebook routes (no authentication required)
+	public := s.http.Group("/public")
+	public.Use(AuditMiddlewareLite())
+	{
+		// Get public notebook by token
+		public.GET("/notebooks/:token", s.handleGetPublicNotebook)
+		// Get public notebook sources
+		public.GET("/notebooks/:token/sources", s.handleListPublicSources)
+		// Get public notebook notes
+		public.GET("/notebooks/:token/notes", s.handleListPublicNotes)
+	}
+
+	// Serve public notebook page
+	s.http.GET("/public/:token", AuditMiddlewareLite(), func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache")
+		content, _ := frontendFS.ReadFile("frontend/index.html")
+		c.Data(http.StatusOK, "text/html; charset=utf-8", content)
+	})
 }
 
 // loadNotebookVectorIndex loads a notebook's sources into the vector store on demand
@@ -1045,40 +1068,107 @@ func (s *Server) handleChat(c *gin.Context) {
 
 // Utility functions
 
-// handleServeFile serves uploaded files with user isolation
+// handleServeFile serves uploaded files with proper access control
+// Rules:
+// 1. If notebook is public -> allow access
+// 2. If notebook is private -> require authentication and ownership
+//
+// Files can come from two sources:
+// 1. Uploaded files (stored in sources table)
+// 2. Generated files (infographics, PPT slides) - stored in note metadata
 func (s *Server) handleServeFile(c *gin.Context) {
-	userID := c.GetString("user_id")
+	golog.Info("===== handleServeFile called =====")
+	ctx := context.Background()
 	filename := c.Param("filename")
+	userID := c.GetString("user_id")
+
+	golog.Infof("Request for file: %s, userID: %s", filename, userID)
 
 	if filename == "" {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "filename required"})
 		return
 	}
 
-	// Security: only allow access to user's own directory
-	filePath := filepath.Join("./data/uploads", userID, filename)
+	var ownerUserID string
+	var isPublic bool
+	var notebookID string
 
-	// Check if file exists and is within user's directory
+	// Try to find the file in sources table first (uploaded files)
+	golog.Infof("Trying to find file %s in sources table", filename)
+	source, notebook, err := s.store.GetSourceByFileName(ctx, filename)
+	if err == nil && source != nil && notebook != nil {
+		// File is from a source upload
+		golog.Infof("File found in sources table, source_id: %s, notebook_id: %s", source.ID, notebook.ID)
+		ownerUserID = notebook.UserID
+		isPublic = notebook.IsPublic
+		notebookID = notebook.ID
+	} else {
+		golog.Infof("File not in sources table (err: %v), trying notes table", err)
+		// File not in sources table - try notes table (generated files like infographics)
+		note, nb, err := s.store.GetNoteByFileName(ctx, filename)
+		if err == nil && note != nil && nb != nil {
+			golog.Infof("File found in notes table, note_id: %s, notebook_id: %s, is_public: %v", note.ID, nb.ID, nb.IsPublic)
+			ownerUserID = nb.UserID
+			isPublic = nb.IsPublic
+			notebookID = nb.ID
+		} else {
+			// File not found in either table
+			golog.Errorf("File not found in either table (notes err: %v)", err)
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "File not found"})
+			return
+		}
+	}
+
+	golog.Infof("File owner: %s, isPublic: %v, notebookID: %s", ownerUserID, isPublic, notebookID)
+
+	// Access control logic
+	if isPublic {
+		// Public notebook - allow access
+		golog.Debugf("Serving public file: %s from notebook: %s", filename, notebookID)
+	} else {
+		// Private notebook - require authentication and ownership
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Authorization required"})
+			return
+		}
+		if userID != ownerUserID {
+			golog.Warnf("Unauthorized access attempt by user %s to file %s owned by %s", userID, filename, ownerUserID)
+			c.JSON(http.StatusForbidden, ErrorResponse{Error: "Access denied"})
+			return
+		}
+	}
+
+	// Build file path using the owner's user ID
+	filePath := filepath.Join("./data/uploads", ownerUserID, filename)
+
+	golog.Infof("Trying to load file: %s (owner: %s, public: %v)", filePath, ownerUserID, isPublic)
+
+	// Security check
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
+		golog.Errorf("Failed to get absolute path for %s: %v", filePath, err)
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "File not found"})
 		return
 	}
 
-	// Verify the path is within the user's uploads directory
-	userUploadDir := filepath.Join("./data/uploads", userID)
-	absUserDir, _ := filepath.Abs(userUploadDir)
-	if !strings.HasPrefix(absPath, absUserDir) {
-		golog.Warnf("Attempted directory traversal by user %s: %s", userID, filename)
+	golog.Infof("Absolute path: %s", absPath)
+
+	// Verify the path is within the uploads directory
+	absUploadDir, _ := filepath.Abs("./data/uploads")
+	if !strings.HasPrefix(absPath, absUploadDir) {
+		golog.Warnf("Attempted directory traversal for file: %s", filename)
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Access denied"})
 		return
 	}
 
 	// Check if file exists
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		golog.Errorf("File not found: %s", absPath)
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "File not found"})
 		return
 	}
+
+	golog.Infof("File found and serving: %s", absPath)
 
 	// Determine content type
 	ext := filepath.Ext(filename)
@@ -1099,7 +1189,16 @@ func (s *Server) handleServeFile(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", contentType)
+	// Cache public files for 1 hour, private files for no-cache
+	if isPublic {
+		c.Header("Cache-Control", "public, max-age=3600")
+	} else {
+		c.Header("Cache-Control", "no-cache")
+	}
 	c.File(absPath)
+
+	golog.Infof("File served: %s (notebook: %s, public: %v, user: %s)",
+		filename, notebookID, isPublic, userID)
 }
 
 func writeFile(path, content string) error {
@@ -1113,3 +1212,116 @@ func writeFile(path, content string) error {
 func removeFile(path string) error {
 	return os.Remove(path)
 }
+
+// Public sharing handlers
+
+// handleSetNotebookPublic sets the notebook's public status
+func (s *Server) handleSetNotebookPublic(c *gin.Context) {
+	ctx := context.Background()
+	id := c.Param("id")
+	userID := c.GetString("user_id")
+
+	// Check ownership first
+	existing, err := s.store.GetNotebook(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Notebook not found"})
+		return
+	}
+	if existing.UserID != "" && existing.UserID != userID {
+		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Access denied"})
+		return
+	}
+
+	var req struct {
+		IsPublic bool `json:"is_public"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	notebook, err := s.store.SetNotebookPublic(ctx, id, req.IsPublic)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update notebook"})
+		return
+	}
+
+	// Log activity
+	action := "make_public"
+	if !req.IsPublic {
+		action = "make_private"
+	}
+	activityLog := &ActivityLog{
+		UserID:       userID,
+		Action:       action,
+		ResourceType: "notebook",
+		ResourceID:   notebook.ID,
+		ResourceName: notebook.Name,
+		IPAddress:    c.ClientIP(),
+		UserAgent:    c.GetHeader("User-Agent"),
+	}
+	if err := s.store.LogActivity(ctx, activityLog); err != nil {
+		golog.Errorf("failed to log activity: %v", err)
+	}
+
+	c.JSON(http.StatusOK, notebook)
+}
+
+// handleGetPublicNotebook retrieves a public notebook by its token
+func (s *Server) handleGetPublicNotebook(c *gin.Context) {
+	ctx := context.Background()
+	token := c.Param("token")
+
+	notebook, err := s.store.GetNotebookByPublicToken(ctx, token)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Public notebook not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, notebook)
+}
+
+// handleListPublicSources lists sources for a public notebook
+func (s *Server) handleListPublicSources(c *gin.Context) {
+	ctx := context.Background()
+	token := c.Param("token")
+
+	// First verify the notebook is public
+	notebook, err := s.store.GetNotebookByPublicToken(ctx, token)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Public notebook not found"})
+		return
+	}
+
+	sources, err := s.store.ListSources(ctx, notebook.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to list sources"})
+		return
+	}
+
+	c.JSON(http.StatusOK, sources)
+}
+
+// handleListPublicNotes lists notes for a public notebook
+func (s *Server) handleListPublicNotes(c *gin.Context) {
+	ctx := context.Background()
+	token := c.Param("token")
+
+	// First verify the notebook is public
+	notebook, err := s.store.GetNotebookByPublicToken(ctx, token)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Public notebook not found"})
+		return
+	}
+
+	notes, err := s.store.ListNotes(ctx, notebook.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to list notes"})
+		return
+	}
+
+	c.JSON(http.StatusOK, notes)
+}
+
+// handleServePublicFile serves files for public notebooks

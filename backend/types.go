@@ -50,6 +50,8 @@ type Notebook struct {
 	UserID      string                 `json:"user_id"`
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
+	IsPublic    bool                   `json:"is_public"`
+	PublicToken string                 `json:"public_token,omitempty"`
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
@@ -61,6 +63,8 @@ type NotebookWithStats struct {
 	UserID      string                 `json:"user_id"`
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
+	IsPublic    bool                   `json:"is_public"`
+	PublicToken string                 `json:"public_token,omitempty"`
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`

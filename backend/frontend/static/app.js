@@ -127,10 +127,16 @@ class OpenNotebook {
         this.currentNotebook = null;
         this.apiBase = '/api';
         this.currentChatSession = null;
+        this.currentPublicToken = null;
 
         // Auth state
         this.token = localStorage.getItem('token');
         this.currentUser = null;
+
+        // Sync token from localStorage to cookie for image loading
+        if (this.token) {
+            document.cookie = `token=${this.token}; path=/; SameSite=Lax`;
+        }
 
         // 初始化本地缓存 (5分钟TTL)
         this.cache = new LocalCache(5);
@@ -164,13 +170,133 @@ class OpenNotebook {
         // 清理过期缓存
         this.cache.cleanup();
 
-        await this.loadNotebooks();
-        this.applyConfig();
-
-        // Check if URL contains /notes/:id for direct notebook access
-        // Only switch to landing if no notebook ID in URL
-        if (!this.checkURLForNotebook()) {
+        // Check if URL contains /notes/:id or /public/:token for direct notebook access
+        // Only load notebooks if not accessing a public notebook directly
+        if (!this.checkURLForNotebook() && !this.checkURLForPublicNotebook()) {
+            await this.loadNotebooks();
+            this.applyConfig();
             this.switchView('landing');
+        } else {
+            this.applyConfig();
+        }
+    }
+
+    // Check if URL contains /public/:token and load the public notebook
+    checkURLForPublicNotebook() {
+        const path = window.location.pathname;
+        const match = path.match(/^\/public\/([a-f0-9-]+)$/);
+        if (match) {
+            this.loadPublicNotebook(match[1]);
+            return true;
+        }
+        return false;
+    }
+
+    // Load public notebook by token
+    async loadPublicNotebook(token) {
+        try {
+            this.setStatus('加载公开笔记本...');
+
+            const [notebook, sources, notes] = await Promise.all([
+                fetch(`/public/notebooks/${token}`).then(r => {
+                    if (!r.ok) throw new Error('Failed to load notebook');
+                    return r.json();
+                }),
+                fetch(`/public/notebooks/${token}/sources`).then(r => {
+                    if (!r.ok) throw new Error('Failed to load sources');
+                    return r.json();
+                }),
+                fetch(`/public/notebooks/${token}/notes`).then(r => {
+                    if (!r.ok) throw new Error('Failed to load notes');
+                    return r.json();
+                })
+            ]);
+
+            this.currentNotebook = notebook;
+            this.currentPublicToken = token;
+
+            // 渲染 sources
+            await this.renderSourcesList(sources);
+
+            // 渲染 notes 到紧凑网格视图
+            await this.renderNotesCompactGridPublic(notes);
+
+            // 显示笔记列表 tab
+            this.showNotesListTab();
+
+            // 设置为只读模式
+            this.setReadOnlyMode(true);
+
+            this.switchView('workspace');
+            this.setStatus('公开笔记本: ' + notebook.name);
+        } catch (error) {
+            console.error('Failed to load public notebook:', error);
+            this.showError('加载公开笔记本失败');
+            this.switchView('landing');
+        }
+    }
+
+    // 设置只读模式
+    setReadOnlyMode(readOnly) {
+        const workspace = document.getElementById('workspaceContainer');
+        if (readOnly) {
+            workspace.classList.add('readonly-mode');
+            // 禁用编辑功能
+            const addSourceBtn = document.getElementById('btnAddSource');
+            if (addSourceBtn) addSourceBtn.style.display = 'none';
+
+            // 隐藏编辑按钮
+            document.querySelectorAll('.transform-card').forEach(btn => {
+                btn.style.pointerEvents = 'none';
+                btn.style.opacity = '0.5';
+            });
+
+            // 隐藏聊天功能
+            const chatWrapper = document.querySelector('.chat-messages-wrapper');
+            if (chatWrapper) chatWrapper.style.display = 'none';
+            const chatInput = document.querySelector('.chat-input-wrapper');
+            if (chatInput) chatInput.style.display = 'none';
+
+            // 显示公开标识
+            this.showPublicBadge();
+        } else {
+            workspace.classList.remove('readonly-mode');
+            const addSourceBtn = document.getElementById('btnAddSource');
+            if (addSourceBtn) addSourceBtn.style.display = '';
+
+            document.querySelectorAll('.transform-card').forEach(btn => {
+                btn.style.pointerEvents = '';
+                btn.style.opacity = '';
+            });
+
+            const chatWrapper = document.querySelector('.chat-messages-wrapper');
+            if (chatWrapper) chatWrapper.style.display = '';
+
+            const chatInput = document.querySelector('.chat-input-wrapper');
+            if (chatInput) chatInput.style.display = '';
+
+            const badge = document.querySelector('.public-badge');
+            if (badge) badge.remove();
+        }
+    }
+
+    // 显示公开标识
+    showPublicBadge() {
+        // 移除已存在的 badge
+        const existingBadge = document.querySelector('.public-badge');
+        if (existingBadge) existingBadge.remove();
+
+        const nameDisplay = document.getElementById('currentNotebookName');
+        if (nameDisplay && !document.querySelector('.public-badge')) {
+            const badge = document.createElement('div');
+            badge.className = 'public-badge';
+            badge.innerHTML = `
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 9l2-2 2 2m-4 0l2-2 2-2"/>
+                </svg>
+                <span>公开</span>
+            `;
+            nameDisplay.parentNode.appendChild(badge);
         }
     }
 
@@ -266,6 +392,17 @@ class OpenNotebook {
 
         safeAddEventListener('btnNewNotebook', 'click', () => this.showNewNotebookModal());
         safeAddEventListener('btnNewNotebookLanding', 'click', () => this.showNewNotebookModal());
+        safeAddEventListener('btnShareNotebook', 'click', () => {
+            if (this.currentNotebook) {
+                this.showShareDialog(this.currentNotebook);
+            }
+        });
+
+        // Share modal events
+        safeAddEventListener('btnCloseShareModal', 'click', () => this.closeShareModal());
+        safeAddEventListener('btnCancelShare', 'click', () => this.closeShareModal());
+        safeAddEventListener('btnCopyLink', 'click', () => this.copyShareLink());
+        safeAddEventListener('btnToggleShare', 'click', () => this.toggleShareFromModal());
 
         // Auth events
         safeAddEventListener('btnLogin', 'click', () => this.handleLogin());
@@ -574,6 +711,10 @@ class OpenNotebook {
                 this.token = event.data.token;
                 this.currentUser = event.data.user;
                 localStorage.setItem('token', this.token);
+
+                // Also set token as cookie for image loading
+                document.cookie = `token=${this.token}; path=/; SameSite=Lax`;
+
                 this.updateAuthUI();
 
                 // Reload data
@@ -588,8 +729,12 @@ class OpenNotebook {
         this.token = null;
         this.currentUser = null;
         localStorage.removeItem('token');
+
+        // Also remove token cookie
+        document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
         this.updateAuthUI();
-        
+
         // Clear data
         this.notebooks = [];
         this.renderNotebooks();
@@ -659,8 +804,26 @@ class OpenNotebook {
             card.querySelector('.stat-notes').textContent = `${nb.note_count || 0} 笔记`;
             card.querySelector('.stat-date').textContent = this.formatDate(nb.created_at);
 
+            // 更新分享按钮状态
+            const shareCardBtn = clone.querySelector('.btn-share-card');
+            if (shareCardBtn) {
+                if (nb.is_public) {
+                    shareCardBtn.classList.add('active');
+                    shareCardBtn.setAttribute('title', '已公开');
+                } else {
+                    shareCardBtn.classList.remove('active');
+                    shareCardBtn.setAttribute('title', '分享');
+                }
+
+                // Share button event
+                shareCardBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.showShareDialog(nb);
+                });
+            }
+
             card.addEventListener('click', (e) => {
-                if (!e.target.closest('.btn-delete-card')) {
+                if (!e.target.closest('.btn-delete-card') && !e.target.closest('.btn-share-card')) {
                     this.selectNotebook(nb.id);
                 }
             });
@@ -735,7 +898,10 @@ class OpenNotebook {
             if (noteViewContainer) noteViewContainer.style.display = 'none';
             if (notesDetailsView) {
                 notesDetailsView.style.display = 'flex';
-                this.renderNotesCompactGrid();
+                // Only render if not in public mode (public mode already has data loaded)
+                if (!this.currentPublicToken) {
+                    this.renderNotesCompactGrid();
+                }
             }
         }
     }
@@ -804,10 +970,7 @@ class OpenNotebook {
                 card.innerHTML = `
                     <button class="btn-delete-compact-note" title="删除笔记">
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <polyline points="4,3 4,2 10,2 10,3"/>
-                            <line x1="2" y1="4" x2="12" y2="4"/>
-                            <line x1="5" y1="7" x2="5" y2="11"/>
-                            <line x1="9" y1="7" x2="9" y2="11"/>
+                            <path d="M4.5 4.5L9.5 9.5M9.5 4.5L4.5 9.5"/>
                         </svg>
                     </button>
                     <div class="note-type">${note.type}</div>
@@ -836,8 +999,43 @@ class OpenNotebook {
         }
     }
 
+    // Render notes compact grid for public notebooks (without API call)
+    async renderNotesCompactGridPublic(notes) {
+        const container = document.querySelector('.notes-compact-grid');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        notes.forEach(note => {
+            const card = document.createElement('div');
+            card.className = 'compact-note-card';
+
+            const plainText = note.content
+                .replace(/^#+\s+/gm, '')
+                .replace(/\*\*/g, '')
+                .replace(/\*/g, '')
+                .replace(/`/g, '')
+                .replace(/\n+/g, ' ')
+                .trim();
+
+            card.innerHTML = `
+                <div class="note-type">${note.type}</div>
+                <h4 class="note-title">${note.title}</h4>
+                <p class="note-preview">${plainText}</p>
+                <div class="note-footer">
+                    <span>${this.formatDate(note.created_at)}</span>
+                    <span>${note.source_ids?.length || 0} 来源</span>
+                </div>
+            `;
+
+            card.addEventListener('click', () => this.viewNote(note));
+            container.appendChild(card);
+        });
+    }
+
     async selectNotebook(id) {
         this.currentNotebook = this.notebooks.find(nb => nb.id === id);
+        this.currentPublicToken = null;  // Clear public token when selecting regular notebook
 
         const nameDisplay = document.getElementById('currentNotebookName');
         nameDisplay.textContent = this.currentNotebook.name;
@@ -845,6 +1043,9 @@ class OpenNotebook {
 
         // Update URL to /notes/:id for shareable links
         this.updateURL(id);
+
+        // 更新分享按钮状态
+        this.updateShareButtonState();
 
         this.switchView('workspace');
 
@@ -860,6 +1061,129 @@ class OpenNotebook {
         ]);
 
         this.setStatus(`当前选择: ${this.currentNotebook.name}`);
+    }
+
+    // 更新分享按钮状态
+    updateShareButtonState() {
+        const shareBtn = document.getElementById('btnShareNotebook');
+        const shareText = document.getElementById('shareButtonText');
+        if (!shareBtn || !this.currentNotebook) return;
+
+        if (this.currentNotebook.is_public) {
+            shareText.textContent = '已公开';
+            shareBtn.classList.add('active');
+        } else {
+            shareText.textContent = '分享';
+            shareBtn.classList.remove('active');
+        }
+    }
+
+    // 显示分享对话框
+    showShareDialog(notebook) {
+        this.currentShareNotebook = notebook;
+        const modal = document.getElementById('shareModal');
+        const overlay = document.getElementById('modalOverlay');
+
+        // 设置笔记本名称
+        document.getElementById('shareNotebookName').textContent = notebook.name;
+
+        // 更新状态显示
+        this.updateShareModalState(notebook);
+
+        // 显示模态框
+        modal.classList.add('active');
+        overlay.classList.add('active');
+    }
+
+    // 更新分享对话框状态
+    updateShareModalState(notebook) {
+        const statusIcon = document.getElementById('shareStatusIcon');
+        const statusText = document.getElementById('shareStatusText');
+        const linkSection = document.getElementById('shareLinkSection');
+        const linkInput = document.getElementById('shareLinkInput');
+        const toggleBtn = document.getElementById('btnToggleShare');
+
+        if (notebook.is_public) {
+            statusIcon.className = 'status-icon public';
+            statusIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l2-2 2 2m-4 0l2-2 2-2"/></svg>';
+            statusText.textContent = '笔记本已公开';
+            linkSection.style.display = 'flex';
+            linkInput.value = `${window.location.origin}/public/${notebook.public_token}`;
+            toggleBtn.textContent = '取消公开';
+            toggleBtn.className = 'btn-secondary';
+        } else {
+            statusIcon.className = 'status-icon private';
+            statusIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="8" height="4" rx="1"/></svg>';
+            statusText.textContent = '笔记本未公开';
+            linkSection.style.display = 'none';
+            toggleBtn.textContent = '公开笔记本';
+            toggleBtn.className = 'btn-primary';
+        }
+    }
+
+    // 关闭分享对话框
+    closeShareModal() {
+        const modal = document.getElementById('shareModal');
+        const overlay = document.getElementById('modalOverlay');
+        modal.classList.remove('active');
+        overlay.classList.remove('active');
+        this.currentShareNotebook = null;
+    }
+
+    // 复制分享链接
+    copyShareLink() {
+        const linkInput = document.getElementById('shareLinkInput');
+        linkInput.select();
+        linkInput.setSelectionRange(0, 99999); // For mobile devices
+
+        navigator.clipboard.writeText(linkInput.value).then(() => {
+            this.showToast('链接已复制到剪贴板', 'success');
+        }).catch(() => {
+            // Fallback
+            try {
+                document.execCommand('copy');
+                this.showToast('链接已复制到剪贴板', 'success');
+            } catch (err) {
+                this.showError('复制失败，请手动复制');
+            }
+        });
+    }
+
+    // 切换笔记本公开状态（从对话框调用）
+    async toggleShareFromModal() {
+        if (!this.currentShareNotebook) return;
+
+        const newPublicState = !this.currentShareNotebook.is_public;
+        try {
+            const result = await this.api(`/notebooks/${this.currentShareNotebook.id}/public`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_public: newPublicState })
+            });
+
+            // 更新当前笔记本
+            if (this.currentNotebook && this.currentNotebook.id === this.currentShareNotebook.id) {
+                this.currentNotebook = result;
+                this.updateShareButtonState();
+            }
+
+            // 更新笔记本列表中的数据
+            const nb = this.notebooks.find(n => n.id === this.currentShareNotebook.id);
+            if (nb) {
+                nb.is_public = result.is_public;
+                nb.public_token = result.public_token;
+            }
+
+            // 更新对话框状态
+            this.currentShareNotebook = result;
+            this.updateShareModalState(result);
+
+            // 刷新笔记本列表
+            this.renderNotebooks();
+
+            this.showToast(newPublicState ? '笔记本已公开' : '笔记本已取消公开', 'success');
+        } catch (error) {
+            this.showError(`操作失败: ${error.message}`);
+        }
     }
 
     initNotebookNameEditor() {
@@ -1139,6 +1463,97 @@ class OpenNotebook {
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
+    // Render sources from data (for public notebooks)
+    async renderSourcesList(sources) {
+        const container = document.getElementById('sourcesGrid');
+        const template = document.getElementById('sourceTemplate');
+
+        if (!container || !template) return;
+
+        container.innerHTML = '';
+
+        if (sources.length === 0) {
+            this.clearContentAreas();
+            return;
+        }
+
+        sources.forEach(source => {
+            const clone = template.content.cloneNode(true);
+            const card = clone.querySelector('.source-card');
+
+            card.dataset.id = source.id;
+            card.querySelector('.source-type-badge').textContent = source.type;
+            card.querySelector('.source-name').textContent = source.name;
+            card.querySelector('.source-meta').textContent = this.formatFileSize(source.file_size) || '文本来源';
+            card.querySelector('.chunk-count').textContent = source.chunk_count || 0;
+
+            const icon = this.getSourceIcon(source.type);
+            card.querySelector('.source-icon').innerHTML = icon;
+
+            // Remove delete button for public notebooks
+            const removeBtn = card.querySelector('.btn-remove-source');
+            if (removeBtn) {
+                removeBtn.style.display = 'none';
+            }
+
+            container.appendChild(clone);
+        });
+
+        this.updateFooter();
+    }
+
+    // Render notes from data (for public notebooks)
+    async renderNotesList(notes) {
+        const container = document.getElementById('notesList');
+        const template = document.getElementById('noteTemplate');
+
+        if (!container || !template) return;
+
+        container.innerHTML = '';
+
+        if (notes.length === 0) {
+            return;
+        }
+
+        notes.forEach(note => {
+            const clone = template.content.cloneNode(true);
+            const item = clone.querySelector('.note-item');
+
+            item.dataset.id = note.id;
+            item.querySelector('.note-type-badge').textContent = this.noteTypeNameMap[note.type] || note.type.toUpperCase();
+            item.querySelector('.note-title').textContent = note.title;
+
+            const plainText = note.content
+                .replace(/^#+\s+/gm, '')
+                .replace(/\*\*/g, '')
+                .replace(/\*/g, '')
+                .replace(/`/g, '')
+                .replace(/\ \[([^\]]+)\]\([^)]+\)/g, '$1')
+                .replace(/\n+/g, ' ')
+                .trim();
+
+            item.querySelector('.note-preview').textContent = plainText;
+            item.querySelector('.note-date').textContent = this.formatDate(note.created_at);
+            item.querySelector('.note-sources').textContent = `${note.source_ids?.length || 0} 来源`;
+
+            // Remove delete button for public notebooks
+            const deleteBtn = item.querySelector('.btn-delete-note');
+            if (deleteBtn) {
+                deleteBtn.style.display = 'none';
+            }
+
+            item.addEventListener('click', (e) => {
+                if (!e.target.closest('.btn-delete-note')) {
+                    this.viewNote(note);
+                }
+            });
+
+            container.appendChild(clone);
+        });
+
+        this.updateFooter();
+    }
+
     showAddSourceModal() {
         if (!this.currentNotebook) {
             this.showError('请先选择一个笔记本');
@@ -1341,7 +1756,14 @@ class OpenNotebook {
     }
 
     async viewNote(note) {
-        const renderedContent = marked.parse(note.content);
+        // Debug: log note metadata
+        console.log('viewNote - metadata:', note.metadata);
+        console.log('viewNote - image_url:', note.metadata?.image_url);
+        console.log('viewNote - currentPublicToken:', this.currentPublicToken);
+
+        // Rewrite image URLs for public notebooks
+        const content = this.rewriteImageUrlsForPublic(note.content);
+        const renderedContent = marked.parse(content);
 
         // 信息图错误提示 HTML
         let infographicErrorHTML = '';
@@ -1371,11 +1793,20 @@ class OpenNotebook {
             `;
         }
 
-        const infographicHTML = note.metadata?.image_url
+        // Rewrite image URL for infographics if present
+        const originalImageUrl = note.metadata?.image_url || null;
+        const infographicImageUrl = originalImageUrl
+            ? this.rewriteImageUrlsForPublic(originalImageUrl)
+            : null;
+
+        console.log('viewNote - originalImageUrl:', originalImageUrl);
+        console.log('viewNote - infographicImageUrl:', infographicImageUrl);
+
+        const infographicHTML = infographicImageUrl
             ? `<div class="infographic-container">
-                 <img src="${note.metadata.image_url}" alt="Infographic" class="infographic-image">
+                 <img src="${infographicImageUrl}" alt="Infographic" class="infographic-image" onerror="console.error('Failed to load image:', this.src)">
                  <div class="infographic-actions">
-                    <a href="${note.metadata.image_url}" target="_blank" class="btn-text">查看大图</a>
+                    <a href="${infographicImageUrl}" target="_blank" class="btn-text">查看大图</a>
                  </div>
                </div>`
             : '';
@@ -1383,13 +1814,17 @@ class OpenNotebook {
         // PPT Slider HTML
         let pptSliderHTML = '';
         if (note.metadata?.slides && note.metadata.slides.length > 0) {
-            const slides = note.metadata.slides;
+            const slides = note.metadata.slides.map(src => {
+                const rewritten = this.rewriteImageUrlsForPublic(src);
+                console.log('viewNote - slide original:', src, 'rewritten:', rewritten);
+                return rewritten;
+            });
             pptSliderHTML = `
                 <div class="ppt-viewer-container" id="pptViewer">
                     <div class="ppt-slides-wrapper">
                         ${slides.map((src, index) => `
                             <div class="ppt-slide ${index === 0 ? 'active' : ''}" data-index="${index}">
-                                <img src="${src}" alt="Slide ${index + 1}">
+                                <img src="${src}" alt="Slide ${index + 1}" onerror="console.error('Failed to load slide:', this.src)">
                                 <div class="ppt-slide-counter">${index + 1} / ${slides.length}</div>
                             </div>
                         `).join('')}
@@ -1920,6 +2355,13 @@ class OpenNotebook {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // Rewrite image URLs for public notebooks
+    // No longer needed - backend handles access control based on notebook public status
+    rewriteImageUrlsForPublic(content) {
+        // Keep original URLs - backend will handle access control
+        return content;
     }
 
     // 通用 toast 提示方法

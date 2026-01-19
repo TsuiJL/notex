@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -67,6 +68,8 @@ func (s *Store) initSchema() error {
 		user_id TEXT,
 		name TEXT NOT NULL,
 		description TEXT,
+		is_public INTEGER DEFAULT 0,
+		public_token TEXT,
 		created_at INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL,
 		metadata TEXT,
@@ -84,6 +87,24 @@ func (s *Store) initSchema() error {
 		// Add user_id column
 		if _, err := s.db.Exec("ALTER TABLE notebooks ADD COLUMN user_id TEXT REFERENCES users(id)"); err != nil {
 			return fmt.Errorf("failed to add user_id column to notebooks: %w", err)
+		}
+	}
+
+	// Check if is_public column exists in notebooks table (migration)
+	err = s.db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('notebooks') WHERE name='is_public'").Scan(&count)
+	if err == nil && count == 0 {
+		// Add is_public column
+		if _, err := s.db.Exec("ALTER TABLE notebooks ADD COLUMN is_public INTEGER DEFAULT 0"); err != nil {
+			return fmt.Errorf("failed to add is_public column to notebooks: %w", err)
+		}
+	}
+
+	// Check if public_token column exists in notebooks table (migration)
+	err = s.db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('notebooks') WHERE name='public_token'").Scan(&count)
+	if err == nil && count == 0 {
+		// Add public_token column
+		if _, err := s.db.Exec("ALTER TABLE notebooks ADD COLUMN public_token TEXT"); err != nil {
+			return fmt.Errorf("failed to add public_token column to notebooks: %w", err)
 		}
 	}
 
@@ -288,20 +309,27 @@ func (s *Store) GetNotebook(ctx context.Context, id string) (*Notebook, error) {
 	var metadataJSON string
 	var createdAt, updatedAt int64
 	var userID sql.NullString
+	var isPublic sql.NullInt64
+	var publicToken sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, user_id, name, description, created_at, updated_at, metadata
+		SELECT id, user_id, name, description, is_public, public_token, created_at, updated_at, metadata
 		FROM notebooks WHERE id = ?
-	`, id).Scan(&nb.ID, &userID, &nb.Name, &nb.Description, &createdAt, &updatedAt, &metadataJSON)
+	`, id).Scan(&nb.ID, &userID, &nb.Name, &nb.Description, &isPublic, &publicToken, &createdAt, &updatedAt, &metadataJSON)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("notebook not found")
 	}
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if userID.Valid {
 		nb.UserID = userID.String
+	}
+
+	nb.IsPublic = isPublic.Valid && isPublic.Int64 > 0
+	if publicToken.Valid {
+		nb.PublicToken = publicToken.String
 	}
 
 	nb.CreatedAt = time.Unix(createdAt, 0)
@@ -319,8 +347,8 @@ func (s *Store) GetNotebook(ctx context.Context, id string) (*Notebook, error) {
 // ListNotebooks retrieves all notebooks for a user
 func (s *Store) ListNotebooks(ctx context.Context, userID string) ([]Notebook, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, user_id, name, description, created_at, updated_at, metadata
-		FROM notebooks 
+		SELECT id, user_id, name, description, is_public, public_token, created_at, updated_at, metadata
+		FROM notebooks
 		WHERE user_id = ?
 		ORDER BY updated_at DESC
 	`, userID)
@@ -335,13 +363,20 @@ func (s *Store) ListNotebooks(ctx context.Context, userID string) ([]Notebook, e
 		var metadataJSON string
 		var createdAt, updatedAt int64
 		var uid sql.NullString
+		var isPublic sql.NullInt64
+		var publicToken sql.NullString
 
-		if err := rows.Scan(&nb.ID, &uid, &nb.Name, &nb.Description, &createdAt, &updatedAt, &metadataJSON); err != nil {
+		if err := rows.Scan(&nb.ID, &uid, &nb.Name, &nb.Description, &isPublic, &publicToken, &createdAt, &updatedAt, &metadataJSON); err != nil {
 			return nil, err
 		}
-		
+
 		if uid.Valid {
 			nb.UserID = uid.String
+		}
+
+		nb.IsPublic = isPublic.Valid && isPublic.Int64 > 0
+		if publicToken.Valid {
+			nb.PublicToken = publicToken.String
 		}
 
 		nb.CreatedAt = time.Unix(createdAt, 0)
@@ -377,6 +412,77 @@ func (s *Store) UpdateNotebook(ctx context.Context, id string, name, description
 	return s.GetNotebook(ctx, id)
 }
 
+// SetNotebookPublic sets the notebook's public status and generates/updates the public token
+func (s *Store) SetNotebookPublic(ctx context.Context, id string, isPublic bool) (*Notebook, error) {
+	now := time.Now()
+
+	if isPublic {
+		// Generate a unique public token
+		token := uuid.New().String()
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE notebooks
+			SET is_public = 1, public_token = ?, updated_at = ?
+			WHERE id = ?
+		`, token, now.Unix(), id)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Clear public status and token
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE notebooks
+			SET is_public = 0, public_token = NULL, updated_at = ?
+			WHERE id = ?
+		`, now.Unix(), id)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return s.GetNotebook(ctx, id)
+}
+
+// GetNotebookByPublicToken retrieves a notebook by its public token
+func (s *Store) GetNotebookByPublicToken(ctx context.Context, token string) (*Notebook, error) {
+	var nb Notebook
+	var metadataJSON string
+	var createdAt, updatedAt int64
+	var userID sql.NullString
+	var isPublic sql.NullInt64
+	var publicToken sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, user_id, name, description, is_public, public_token, created_at, updated_at, metadata
+		FROM notebooks WHERE public_token = ? AND is_public = 1
+	`, token).Scan(&nb.ID, &userID, &nb.Name, &nb.Description, &isPublic, &publicToken, &createdAt, &updatedAt, &metadataJSON)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("public notebook not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if userID.Valid {
+		nb.UserID = userID.String
+	}
+
+	nb.IsPublic = isPublic.Valid && isPublic.Int64 > 0
+	if publicToken.Valid {
+		nb.PublicToken = publicToken.String
+	}
+
+	nb.CreatedAt = time.Unix(createdAt, 0)
+	nb.UpdatedAt = time.Unix(updatedAt, 0)
+
+	if metadataJSON != "" {
+		json.Unmarshal([]byte(metadataJSON), &nb.Metadata)
+	} else {
+		nb.Metadata = make(map[string]interface{})
+	}
+
+	return &nb, nil
+}
+
 // DeleteNotebook deletes a notebook and all its data
 func (s *Store) DeleteNotebook(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM notebooks WHERE id = ?`, id)
@@ -387,7 +493,7 @@ func (s *Store) DeleteNotebook(ctx context.Context, id string) error {
 func (s *Store) ListNotebooksWithStats(ctx context.Context, userID string) ([]NotebookWithStats, error) {
 	query := `
 		SELECT
-			n.id, n.user_id, n.name, n.description, n.created_at, n.updated_at, n.metadata,
+			n.id, n.user_id, n.name, n.description, n.is_public, n.public_token, n.created_at, n.updated_at, n.metadata,
 			COALESCE((SELECT COUNT(*) FROM sources WHERE notebook_id = n.id), 0) as source_count,
 			COALESCE((SELECT COUNT(*) FROM notes WHERE notebook_id = n.id), 0) as note_count
 		FROM notebooks n
@@ -407,13 +513,20 @@ func (s *Store) ListNotebooksWithStats(ctx context.Context, userID string) ([]No
 		var metadataJSON string
 		var createdAt, updatedAt int64
 		var uid sql.NullString
+		var isPublic sql.NullInt64
+		var publicToken sql.NullString
 
-		if err := rows.Scan(&nb.ID, &uid, &nb.Name, &nb.Description, &createdAt, &updatedAt, &metadataJSON, &nb.SourceCount, &nb.NoteCount); err != nil {
+		if err := rows.Scan(&nb.ID, &uid, &nb.Name, &nb.Description, &isPublic, &publicToken, &createdAt, &updatedAt, &metadataJSON, &nb.SourceCount, &nb.NoteCount); err != nil {
 			return nil, err
 		}
-		
+
 		if uid.Valid {
 			nb.UserID = uid.String
+		}
+
+		nb.IsPublic = isPublic.Valid && isPublic.Int64 > 0
+		if publicToken.Valid {
+			nb.PublicToken = publicToken.String
 		}
 
 		nb.CreatedAt = time.Unix(createdAt, 0)
@@ -479,6 +592,60 @@ func (s *Store) GetSource(ctx context.Context, id string) (*Source, error) {
 	}
 
 	return &src, nil
+}
+
+// GetSourceByFileName finds a source by its filename and returns the source with its notebook info
+func (s *Store) GetSourceByFileName(ctx context.Context, filename string) (*Source, *Notebook, error) {
+	var src Source
+	var notebook Notebook
+	var metadataJSON string
+	var notebookMetadataJSON string
+	var createdAt, updatedAt, notebookCreatedAt, notebookUpdatedAt int64
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+			s.id, s.notebook_id, s.name, s.type, s.url, s.content, s.file_name, s.file_size, s.chunk_count,
+			s.created_at, s.updated_at, s.metadata,
+			n.id as nb_id, n.user_id as nb_user_id, n.name as nb_name, n.description as nb_description,
+			n.is_public as nb_is_public, n.public_token as nb_public_token,
+			n.created_at as nb_created_at, n.updated_at as nb_updated_at, n.metadata as nb_metadata
+		FROM sources s
+		INNER JOIN notebooks n ON s.notebook_id = n.id
+		WHERE s.file_name = ?
+	`, filename).Scan(
+		&src.ID, &src.NotebookID, &src.Name, &src.Type, &src.URL, &src.Content,
+		&src.FileName, &src.FileSize, &src.ChunkCount, &createdAt, &updatedAt, &metadataJSON,
+		&notebook.ID, &notebook.UserID, &notebook.Name, &notebook.Description,
+		&notebook.IsPublic, &notebook.PublicToken,
+		&notebookCreatedAt, &notebookUpdatedAt, &notebookMetadataJSON,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil, fmt.Errorf("source not found")
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	src.CreatedAt = time.Unix(createdAt, 0)
+	src.UpdatedAt = time.Unix(updatedAt, 0)
+
+	if metadataJSON != "" {
+		json.Unmarshal([]byte(metadataJSON), &src.Metadata)
+	} else {
+		src.Metadata = make(map[string]interface{})
+	}
+
+	notebook.CreatedAt = time.Unix(notebookCreatedAt, 0)
+	notebook.UpdatedAt = time.Unix(notebookUpdatedAt, 0)
+
+	if notebookMetadataJSON != "" {
+		json.Unmarshal([]byte(notebookMetadataJSON), &notebook.Metadata)
+	} else {
+		notebook.Metadata = make(map[string]interface{})
+	}
+
+	return &src, &notebook, nil
 }
 
 // ListSources retrieves all sources for a notebook
@@ -624,6 +791,127 @@ func (s *Store) ListNotes(ctx context.Context, notebookID string) ([]Note, error
 	}
 
 	return notes, nil
+}
+
+// GetNoteByFileName finds a note by its filename in metadata (image_url or slides)
+// Returns the note with its notebook info
+func (s *Store) GetNoteByFileName(ctx context.Context, filename string) (*Note, *Notebook, error) {
+	log.Printf("DEBUG: GetNoteByFileName called for filename: %s", filename)
+
+	// Get all notes and search for the filename
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			n.id, n.notebook_id, n.title, n.content, n.type, n.source_ids,
+			n.created_at, n.updated_at, n.metadata,
+			nb.id as nb_id, nb.user_id as nb_user_id, nb.name as nb_name, nb.description as nb_description,
+			nb.is_public as nb_is_public, nb.public_token as nb_public_token,
+			nb.created_at as nb_created_at, nb.updated_at as nb_updated_at, nb.metadata as nb_metadata
+		FROM notes n
+		INNER JOIN notebooks nb ON n.notebook_id = nb.id
+	`)
+	if err != nil {
+		log.Printf("DEBUG: Query error: %v", err)
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	noteCount := 0
+	for rows.Next() {
+		noteCount++
+
+		var note Note
+		var notebook Notebook
+		var metadataJSON, sourceIDsJSON, notebookMetadataJSON string
+		var createdAt, updatedAt, nbCreatedAt, nbUpdatedAt int64
+		var nbPublicToken sql.NullString
+
+		if err := rows.Scan(
+			&note.ID, &note.NotebookID, &note.Title, &note.Content, &note.Type, &sourceIDsJSON,
+			&createdAt, &updatedAt, &metadataJSON,
+			&notebook.ID, &notebook.UserID, &notebook.Name, &notebook.Description,
+			&notebook.IsPublic, &nbPublicToken,
+			&nbCreatedAt, &nbUpdatedAt, &notebookMetadataJSON,
+		); err != nil {
+			log.Printf("DEBUG: Scan error at row %d: %v", noteCount, err)
+			continue
+		}
+
+		// Convert NullString to string
+		if nbPublicToken.Valid {
+			notebook.PublicToken = nbPublicToken.String
+		} else {
+			notebook.PublicToken = ""
+		}
+
+		note.CreatedAt = time.Unix(createdAt, 0)
+		note.UpdatedAt = time.Unix(updatedAt, 0)
+		notebook.CreatedAt = time.Unix(nbCreatedAt, 0)
+		notebook.UpdatedAt = time.Unix(nbUpdatedAt, 0)
+
+		if metadataJSON != "" {
+			if err := json.Unmarshal([]byte(metadataJSON), &note.Metadata); err != nil {
+				log.Printf("Failed to unmarshal note metadata: %v, JSON: %s", err, metadataJSON)
+				note.Metadata = make(map[string]interface{})
+			}
+		} else {
+			note.Metadata = make(map[string]interface{})
+		}
+
+		if notebookMetadataJSON != "" {
+			if err := json.Unmarshal([]byte(notebookMetadataJSON), &notebook.Metadata); err != nil {
+				log.Printf("Failed to unmarshal notebook metadata: %v", err)
+				notebook.Metadata = make(map[string]interface{})
+			}
+		} else {
+			notebook.Metadata = make(map[string]interface{})
+		}
+
+		if sourceIDsJSON != "" {
+			json.Unmarshal([]byte(sourceIDsJSON), &note.SourceIDs)
+		}
+
+		// Debug: print metadata for infograph type notes
+		if note.Type == "infograph" {
+			log.Printf("DEBUG: Found infograph note %s, metadata: %+v", note.ID, note.Metadata)
+		}
+
+		// Check if filename is in image_url
+		if imageURL, ok := note.Metadata["image_url"]; ok {
+			if imageURLStr, ok := imageURL.(string); ok {
+				log.Printf("DEBUG: Checking image_url: %s vs %s", filepath.Base(imageURLStr), filename)
+				if filepath.Base(imageURLStr) == filename {
+					log.Printf("Found file in note image_url: %s, notebook: %s, public: %v", filename, notebook.ID, notebook.IsPublic)
+					return &note, &notebook, nil
+				}
+			}
+		}
+
+		// Check if filename is in slides
+		if slides, ok := note.Metadata["slides"]; ok {
+			// Try to handle slides as JSON array
+			if slidesArray, ok := slides.([]interface{}); ok {
+				for _, slide := range slidesArray {
+					if slideURL, ok := slide.(string); ok && filepath.Base(slideURL) == filename {
+						return &note, &notebook, nil
+					}
+				}
+			}
+			// Try to handle slides as JSON string (from SQLite)
+			if slidesStr, ok := slides.(string); ok && slidesStr != "" {
+				var slidesArray []string
+				if err := json.Unmarshal([]byte(slidesStr), &slidesArray); err == nil {
+					for _, slideURL := range slidesArray {
+						if filepath.Base(slideURL) == filename {
+							return &note, &notebook, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	log.Printf("DEBUG: Checked %d notes, file not found", noteCount)
+	return nil, nil, fmt.Errorf("note not found for filename")
 }
 
 // DeleteNote deletes a note
