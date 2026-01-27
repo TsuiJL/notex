@@ -45,3 +45,7 @@ notex
 !notex/
 # Added by goreleaser init:
 dist/
+
+
+.claude
+.baidu-cc
