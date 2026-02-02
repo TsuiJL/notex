@@ -919,6 +919,13 @@ class OpenNotebook {
             card.innerHTML = `
                 <div class="public-showcase-card-content">
                     <h3 class="public-showcase-card-title">${this.escapeHtml(nb.name)}</h3>
+                    <div class="public-showcase-card-footer">
+                        <div class="public-showcase-card-stats">
+                            <span>${nb.source_count || 0} 来源</span>
+                            <span>${nb.note_count || 0} 笔记</span>
+                        </div>
+                        <span class="public-showcase-card-date">${this.formatDate(nb.created_at)}</span>
+                    </div>
                 </div>
             `;
 

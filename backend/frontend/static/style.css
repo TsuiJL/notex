@@ -2633,7 +2633,7 @@ body {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.85));
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.3));
     pointer-events: none;
     z-index: 1;
 }
@@ -2656,7 +2656,8 @@ body {
 .public-showcase-card.has-cover-image .public-showcase-card-title,
 .public-showcase-card.has-cover-image .public-showcase-card-desc,
 .public-showcase-card.has-cover-image .public-showcase-card-footer,
-.public-showcase-card.has-cover-image .public-showcase-card-stats {
+.public-showcase-card.has-cover-image .public-showcase-card-stats,
+.public-showcase-card.has-cover-image .public-showcase-card-date {
     color: white;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
@@ -2693,11 +2694,21 @@ body {
 }
 
 .public-showcase-card-footer {
-    display: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: auto;
+    padding-top: var(--space-sm);
 }
 
 .public-showcase-card-stats {
-    display: none;
+    display: flex;
+    gap: var(--space-md);
+    font-size: 0.875rem;
+}
+
+.public-showcase-card-date {
+    font-size: 0.875rem;
 }
 
 .notebook-grid {
