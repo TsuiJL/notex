@@ -15,16 +15,16 @@ type Config struct {
 	ServerPort string
 
 	// LLM settings
-	OpenAIAPIKey      string
-	OpenAIBaseURL     string
-	OpenAIModel       string
-	EmbeddingModel    string
-	GoogleAPIKey      string
-	OllamaBaseURL     string
-	OllamaModel       string
+	OpenAIAPIKey   string
+	OpenAIBaseURL  string
+	OpenAIModel    string
+	EmbeddingModel string
+	GoogleAPIKey   string
+	OllamaBaseURL  string
+	OllamaModel    string
 
 	// Image generation settings
-	ImageProvider     string // "gemini", "glm", "zimage"
+	ImageProvider    string // "gemini", "glm", "zimage"
 	GLMAPIKey        string
 	GLMImageModel    string
 	GeminiImageModel string
@@ -32,36 +32,36 @@ type Config struct {
 	ZImageModel      string
 
 	// Vector store settings
-	VectorStoreType    string // "memory", "supabase", "pgvector", "redis", "sqlite"
-	SupabaseURL        string
-	SupabaseKey        string
-	PostgreSQLURL      string
-	RedisURL           string
-	SQLitePath         string
+	VectorStoreType string // "memory", "supabase", "pgvector", "redis", "sqlite"
+	SupabaseURL     string
+	SupabaseKey     string
+	PostgreSQLURL   string
+	RedisURL        string
+	SQLitePath      string
 
 	// Store settings (for checkpoints)
-	StoreType          string // "memory", "sqlite", "postgres", "redis"
-	StorePath          string
+	StoreType string // "memory", "sqlite", "postgres", "redis"
+	StorePath string
 
 	// Application settings
-	MaxSources         int
-	MaxContextLength   int
-	ChunkSize          int
-	ChunkOverlap       int
+	MaxSources       int
+	MaxContextLength int
+	ChunkSize        int
+	ChunkOverlap     int
 
 	// Podcast generation
-	EnablePodcast      bool
-	PodcastVoice       string
+	EnablePodcast bool
+	PodcastVoice  string
 
 	// Document conversion
-	EnableMarkitdown   bool
+	EnableMarkitdown bool
 
 	// Demo settings
-	AllowMultipleNotesOfSameType     bool
+	AllowMultipleNotesOfSameType bool
 
 	// LangSmith tracing (optional)
-	LangChainAPIKey    string
-	LangChainProject   string
+	LangChainAPIKey  string
+	LangChainProject string
 
 	// Auth settings
 	JWTSecret string
@@ -92,46 +92,46 @@ func LoadConfig() Config {
 	loadEnv()
 
 	cfg := Config{
-		ServerHost:       getEnv("SERVER_HOST", "0.0.0.0"),
-		ServerPort:       getEnv("SERVER_PORT", "8080"),
-		OpenAIAPIKey:     getEnv("OPENAI_API_KEY", ""),
-		OpenAIBaseURL:    getEnv("OPENAI_BASE_URL", ""),
-		OpenAIModel:      getEnv("OPENAI_MODEL", "gpt-4o-mini"),
-		EmbeddingModel:   getEnv("EMBEDDING_MODEL", "text-embedding-3-small"),
-		GoogleAPIKey:     getEnv("GOOGLE_API_KEY", ""),
-		OllamaBaseURL:    getEnv("OLLAMA_BASE_URL", "http://localhost:11434"),
-		OllamaModel:      getEnv("OLLAMA_MODEL", "llama3.2"),
-		ImageProvider:    getEnv("IMAGE_PROVIDER", "gemini"),
-		GLMAPIKey:       getEnv("GLM_API_KEY", ""),
-		GLMImageModel:   getEnv("GLM_IMAGE_MODEL", "glm-image"),
-		GeminiImageModel: getEnv("GEMINI_IMAGE_MODEL", "gemini-2.0-flash-exp"),
-		ZImageAPIKey:     getEnv("ZIMAGE_API_KEY", ""),
-		ZImageModel:      getEnv("ZIMAGE_MODEL", "z-image-turbo"),
-		VectorStoreType:  getEnv("VECTOR_STORE_TYPE", "sqlite"),
-		SupabaseURL:      getEnv("SUPABASE_URL", ""),
-		SupabaseKey:      getEnv("SUPABASE_KEY", ""),
-		PostgreSQLURL:    getEnv("POSTGRES_URL", ""),
-		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379"),
-		SQLitePath:       getEnv("SQLITE_PATH", "./data/vector.db"),
-		StoreType:        getEnv("STORE_TYPE", "sqlite"),
-		StorePath:        getEnv("STORE_PATH", "./data/checkpoints.db"),
-		MaxSources:       getEnvInt("MAX_SOURCES", 5),
-		MaxContextLength: getEnvInt("MAX_CONTEXT_LENGTH", 128000),
-		ChunkSize:        getEnvInt("CHUNK_SIZE", 1000),
-		ChunkOverlap:     getEnvInt("CHUNK_OVERLAP", 200),
-		EnablePodcast:    getEnvBool("ENABLE_PODCAST", true),
-		PodcastVoice:     getEnv("PODCAST_VOICE", "alloy"),
-		EnableMarkitdown:           getEnvBool("ENABLE_MARKITDOWN", true),
+		ServerHost:                   getEnv("SERVER_HOST", "0.0.0.0"),
+		ServerPort:                   getEnv("SERVER_PORT", "8080"),
+		OpenAIAPIKey:                 getEnv("OPENAI_API_KEY", ""),
+		OpenAIBaseURL:                getEnv("OPENAI_BASE_URL", ""),
+		OpenAIModel:                  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
+		EmbeddingModel:               getEnv("EMBEDDING_MODEL", "text-embedding-3-small"),
+		GoogleAPIKey:                 getEnv("GOOGLE_API_KEY", ""),
+		OllamaBaseURL:                getEnv("OLLAMA_BASE_URL", "http://localhost:11434"),
+		OllamaModel:                  getEnv("OLLAMA_MODEL", "llama3.2"),
+		ImageProvider:                getEnv("IMAGE_PROVIDER", "gemini"),
+		GLMAPIKey:                    getEnv("GLM_API_KEY", ""),
+		GLMImageModel:                getEnv("GLM_IMAGE_MODEL", "glm-image"),
+		GeminiImageModel:             getEnv("GEMINI_IMAGE_MODEL", "gemini-2.0-flash-exp"),
+		ZImageAPIKey:                 getEnv("ZIMAGE_API_KEY", ""),
+		ZImageModel:                  getEnv("ZIMAGE_MODEL", "z-image-turbo"),
+		VectorStoreType:              getEnv("VECTOR_STORE_TYPE", "sqlite"),
+		SupabaseURL:                  getEnv("SUPABASE_URL", ""),
+		SupabaseKey:                  getEnv("SUPABASE_KEY", ""),
+		PostgreSQLURL:                getEnv("POSTGRES_URL", ""),
+		RedisURL:                     getEnv("REDIS_URL", "redis://localhost:6379"),
+		SQLitePath:                   getEnv("SQLITE_PATH", "./data/vector.db"),
+		StoreType:                    getEnv("STORE_TYPE", "sqlite"),
+		StorePath:                    getEnv("STORE_PATH", "./data/checkpoints.db"),
+		MaxSources:                   getEnvInt("MAX_SOURCES", 5),
+		MaxContextLength:             getEnvInt("MAX_CONTEXT_LENGTH", 128000),
+		ChunkSize:                    getEnvInt("CHUNK_SIZE", 1000),
+		ChunkOverlap:                 getEnvInt("CHUNK_OVERLAP", 200),
+		EnablePodcast:                getEnvBool("ENABLE_PODCAST", true),
+		PodcastVoice:                 getEnv("PODCAST_VOICE", "alloy"),
+		EnableMarkitdown:             getEnvBool("ENABLE_MARKITDOWN", true),
 		AllowMultipleNotesOfSameType: getEnvBool("ALLOW_MULTIPLE_NOTES_OF_SAME_TYPE", true),
-		LangChainAPIKey:  getEnv("LANGCHAIN_API_KEY", ""),
-		LangChainProject: getEnv("LANGCHAIN_PROJECT", "notex"),
-		
-		JWTSecret:        getEnv("JWT_SECRET", "your-secret-key-change-me"),
-		
+		LangChainAPIKey:              getEnv("LANGCHAIN_API_KEY", ""),
+		LangChainProject:             getEnv("LANGCHAIN_PROJECT", "notex"),
+
+		JWTSecret: getEnv("JWT_SECRET", "your-secret-key-change-me"),
+
 		GithubClientID:     getEnv("GITHUB_CLIENT_ID", ""),
 		GithubClientSecret: getEnv("GITHUB_CLIENT_SECRET", ""),
 		GithubRedirectURL:  getEnv("GITHUB_REDIRECT_URL", ""),
-		
+
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),

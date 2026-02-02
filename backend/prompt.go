@@ -42,6 +42,12 @@ func getTransformationPrompt(transformType string) string {
 	case "insight":
 		return insightPrompt()
 
+	case "data_table":
+		return dataTablePrompt()
+
+	case "data_chart":
+		return dataChartPrompt()
+
 	default:
 		return defaultPrompt()
 	}
@@ -420,6 +426,53 @@ func defaultPrompt() string {
 {sources}
 
 生成{length}内容。`
+}
+
+func dataTablePrompt() string {
+	return `你是一个数据分析专家。请根据以下来源，以{format}格式创建一个或多个数据表格。
+**注意：无论来源是什么语言，请务必使用中文进行回复。不要使用 ` + "```markdown" + ` 标记包裹输出。**
+
+来源：
+{sources}
+
+要求：
+1. 分析来源内容，提取可用于表格展示的数据、信息或知识点
+2. 根据数据内容创建合适的表格，可以是一个表格，也可以是多个相关表格
+3. 表格应包含清晰的表头，合理组织列和行
+4. 表格内容应简洁、易读，突出关键信息
+5. 可以包括：数据对比、信息汇总、参数列表、特征对比、时间序列数据等
+6. 如果内容适合多个不同维度的表格，可以分别创建多个表格
+
+请确保表格结构清晰，数据准确，格式规范。`
+}
+
+func dataChartPrompt() string {
+	return `你是一个数据可视化专家。请根据以下来源，分析数据并生成 ECharts 图表配置。
+**注意：无论来源是什么语言，请务必使用中文进行回复。**
+
+来源：
+{sources}
+
+要求：
+1. 分析来源内容，提取可用于图表展示的数据、指标或趋势
+2. 根据数据类型选择合适的图表类型：
+   - 柱状图：用于对比不同类别的数值
+   - 折线图：用于展示时间序列或趋势变化
+   - 饼图：用于展示占比或构成
+   - 散点图：用于展示两个变量之间的关系
+   - 雷达图：用于多维度数据对比
+3. 可以生成一个图表，也可以生成多个相关图表
+4. 图表配置必须是有效的 ECharts option 格式
+5. 图表标题应简洁明了，突出核心信息
+6. 图例、坐标轴标签等应清晰易懂
+
+请以 JSON 数组格式输出图表配置。
+
+每个图表元素必须包含：
+- title 字段：图表的标题
+- option 字段：ECharts 的完整 option 配置对象
+
+输出必须是有效的 JSON 数组，不要包含 markdown 代码块标记，不要添加任何其他文字或说明。`
 }
 
 // Chat system prompt

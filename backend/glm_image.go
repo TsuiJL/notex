@@ -26,7 +26,7 @@ type GLMImageClient struct {
 // NewGLMImageClient creates a new GLM image client
 func NewGLMImageClient(apiKey string) *GLMImageClient {
 	return &GLMImageClient{
-		apiKey: apiKey,
+		apiKey:  apiKey,
 		baseURL: "https://open.bigmodel.cn/api/paas/v4/images/generations",
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,

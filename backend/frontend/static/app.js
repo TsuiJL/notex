@@ -154,7 +154,9 @@ class OpenNotebook {
             mindmap: '思维导图',
             infograph: '信息图',
             ppt: '幻灯片',
-            insight: '洞察报告'
+            insight: '洞察报告',
+            data_table: '数据表格',
+            data_chart: '数据图表'
         };
 
         this.init();
@@ -2134,6 +2136,85 @@ class OpenNotebook {
                 await MathJax.typesetPromise([document.querySelector('.note-view-content')]);
             } catch (e) {
                 console.warn('MathJax rendering error:', e);
+            }
+        }
+
+        // Render ECharts if note type is data_chart
+        if (note.type === 'data_chart') {
+            try {
+                const contentArea = document.querySelector('.note-view-content');
+                const markdownContent = document.querySelector('.markdown-content');
+
+                // Try to parse the note content as JSON for chart options
+                let charts = [];
+                try {
+                    // Check if content contains JSON array or object
+                    const jsonMatch = note.content.match(/(\[[\s\S]*\])|(\{[\s\S]*\})/);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        if (Array.isArray(parsed)) {
+                            // New format: array of {title, option}
+                            charts = parsed.map(item => ({
+                                title: item.title || '',
+                                option: item.option
+                            }));
+                        } else if (parsed.charts) {
+                            // Old format: {charts: [{title, option}]}
+                            charts = parsed.charts.map(item => ({
+                                title: item.title || '',
+                                option: item.option
+                            }));
+                        } else if (parsed.option) {
+                            // Single chart format: {option: {...}}
+                            charts = [{ title: '', option: parsed.option }];
+                        }
+                    }
+                } catch (e) {
+                    console.log('Failed to parse chart JSON:', e);
+                }
+
+                if (charts.length > 0) {
+                    // Create chart containers
+                    const chartContainer = document.createElement('div');
+                    chartContainer.className = 'charts-container';
+
+                    charts.forEach((chart, index) => {
+                        const chartWrapper = document.createElement('div');
+                        chartWrapper.className = 'chart-wrapper';
+                        if (chart.title) {
+                            const chartTitle = document.createElement('h4');
+                            chartTitle.className = 'chart-title';
+                            chartTitle.textContent = chart.title;
+                            chartWrapper.appendChild(chartTitle);
+                        }
+
+                        const chartDiv = document.createElement('div');
+                        chartDiv.className = 'chart-div';
+                        chartDiv.id = `chart-${note.id}-${index}`;
+
+                        chartWrapper.appendChild(chartDiv);
+                        chartContainer.appendChild(chartWrapper);
+
+                        // Initialize ECharts
+                        const echartsInstance = echarts.init(chartDiv, {
+                            renderer: 'canvas',
+                            useDirtyRect: true
+                        });
+
+                        echartsInstance.setOption(chart.option);
+
+                        // Responsive resize
+                        window.addEventListener('resize', () => {
+                            echartsInstance.resize();
+                        });
+                    });
+
+                    // Insert charts before markdown content
+                    contentArea.insertBefore(chartContainer, markdownContent);
+                    markdownContent.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to render charts:', error);
             }
         }
 

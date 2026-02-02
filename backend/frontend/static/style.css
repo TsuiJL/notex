@@ -1308,6 +1308,38 @@ body {
     transform: scale(1.1);
 }
 
+/* Charts Viewer Styles */
+.charts-container {
+    margin: 1.5rem 0;
+    padding: var(--space-md);
+    background: #ffffff;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+.chart-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.chart-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-md);
+}
+
+.chart-div {
+    width: 100%;
+    min-height: 400px;
+    border-radius: var(--radius-md);
+}
+
 .infographic-actions {
     display: flex;
     justify-content: center;
@@ -1319,6 +1351,8 @@ body {
 .transform-card[data-type="infograph"] { background-color: #fef2f2 !important; color: #991b1b !important; }
 .transform-card[data-type="ppt"] { background-color: #fff7ed !important; color: #9a3412 !important; }
 .transform-card[data-type="insight"] { background-color: #f3e8ff !important; color: #6b21a8 !important; }
+.transform-card[data-type="data_table"] { background-color: #f0fdf4 !important; color: #166534 !important; }
+.transform-card[data-type="data_chart"] { background-color: #ecfccb !important; color: #365314 !important; }
 
 /* 定义角度变量，用于平滑动画 */
 @property --gradient-angle {

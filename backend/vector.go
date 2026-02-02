@@ -196,7 +196,7 @@ func (vs *VectorStore) SimilaritySearch(ctx context.Context, notebookID, query s
 			candidateDocs = append(candidateDocs, doc)
 		}
 	}
-	
+
 	if len(candidateDocs) == 0 {
 		return []schema.Document{}, nil
 	}

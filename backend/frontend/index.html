@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/static/style.css?v=10">
     <script src="https://s4.zstatic.net/ajax/libs/marked/16.3.0/lib/marked.umd.min.js"></script>
     <script src="https://s4.zstatic.net/ajax/libs/mermaid/11.4.0/mermaid.min.js"></script>
+    <script src="https://s4.zstatic.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
     <script>
         window.MathJax = {
             tex: {
@@ -316,6 +317,18 @@
                                     </div>
                                     <span class="transform-name">洞察</span>
                                 </button>
+                                <button class="transform-card" data-type="data_table">
+                                    <div class="transform-icon">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                                    </div>
+                                    <span class="transform-name">数据表格</span>
+                                </button>
+                                <button class="transform-card" data-type="data_chart">
+                                    <div class="transform-icon">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                                    </div>
+                                    <span class="transform-name">数据图表</span>
+                                </button>
                             </div>
                             <div class="transform-custom-pill">
                                 <input type="text" id="customPrompt" placeholder="自定义生成..." autocomplete="off">
@@ -607,6 +620,6 @@
         </div>
     </template>
 
-    <script src="/static/app.js?v=12"></script>
+    <script src="/static/app.js?v=17"></script>
 </body>
 </html>

@@ -55,7 +55,7 @@ func NewServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
-	
+
 	// Initialize auth handler
 	authHandler := NewAuthHandler(cfg, baseStore)
 
@@ -254,7 +254,7 @@ func (s *Server) handleConfig(c *gin.Context) {
 func (s *Server) handleListNotebooks(c *gin.Context) {
 	ctx := context.Background()
 	userID := c.GetString("user_id")
-	
+
 	notebooks, err := s.store.ListNotebooks(ctx, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to list notebooks"})
@@ -330,7 +330,7 @@ func (s *Server) handleGetNotebook(c *gin.Context) {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Notebook not found"})
 		return
 	}
-	
+
 	// Check ownership
 	if notebook.UserID != "" && notebook.UserID != userID {
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Access denied"})
@@ -509,7 +509,7 @@ func (s *Server) handleDeleteSource(c *gin.Context) {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Source not found"})
 		return
 	}
-	
+
 	if err := s.checkNotebookAccess(ctx, source.NotebookID, userID); err != nil {
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})
 		return

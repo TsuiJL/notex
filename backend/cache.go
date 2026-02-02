@@ -20,8 +20,8 @@ type cacheEntry struct {
 }
 
 type CacheStats struct {
-	Hits     int64
-	Misses   int64
+	Hits      int64
+	Misses    int64
 	Evictions int64
 }
 
@@ -246,7 +246,7 @@ func (cs *CachedStore) UpdateNotebook(ctx context.Context, id string, name, desc
 	cs.cache.Delete(notebookKey(id))
 	// We can't easily invalidate list cache without userID, so we rely on TTL or clear all
 	// Ideally we should pass userID here too, but for now let's clear matching patterns if possible
-	// or accept slight staleness. 
+	// or accept slight staleness.
 	// A better approach is to store userID in notebook struct and invalidate specifically.
 	if notebook.UserID != "" {
 		cs.cache.Delete(notebookListKey(notebook.UserID))
@@ -272,11 +272,11 @@ func (cs *CachedStore) CreateNotebook(ctx context.Context, userID, name, descrip
 
 // DeleteNotebook deletes a notebook and invalidates cache
 func (cs *CachedStore) DeleteNotebook(ctx context.Context, id string) error {
-    // Get notebook first to find userID
-    notebook, err := cs.Store.GetNotebook(ctx, id)
-    if err != nil {
-        return err
-    }
+	// Get notebook first to find userID
+	notebook, err := cs.Store.GetNotebook(ctx, id)
+	if err != nil {
+		return err
+	}
 
 	err = cs.Store.DeleteNotebook(ctx, id)
 	if err != nil {

@@ -25,7 +25,7 @@ type ZImageClient struct {
 // NewZImageClient creates a new ZImage client
 func NewZImageClient(apiKey string) *ZImageClient {
 	return &ZImageClient{
-		apiKey: apiKey,
+		apiKey:  apiKey,
 		baseURL: "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation",
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,
@@ -81,7 +81,7 @@ func (z *ZImageClient) GenerateImage(ctx context.Context, model, prompt string, 
 	// Read response body
 	var result struct {
 		Output struct {
-			TaskID string `json:"task_id"`
+			TaskID  string `json:"task_id"`
 			Results []struct {
 				URL string `json:"url"`
 			} `json:"results"`
