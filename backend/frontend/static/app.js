@@ -2181,12 +2181,6 @@ class OpenNotebook {
                     charts.forEach((chart, index) => {
                         const chartWrapper = document.createElement('div');
                         chartWrapper.className = 'chart-wrapper';
-                        if (chart.title) {
-                            const chartTitle = document.createElement('h4');
-                            chartTitle.className = 'chart-title';
-                            chartTitle.textContent = chart.title;
-                            chartWrapper.appendChild(chartTitle);
-                        }
 
                         const chartDiv = document.createElement('div');
                         chartDiv.className = 'chart-div';
@@ -2202,6 +2196,11 @@ class OpenNotebook {
                         });
 
                         echartsInstance.setOption(chart.option);
+
+                        // Resize after 2 seconds to ensure proper display
+                        setTimeout(() => {
+                            echartsInstance.resize();
+                        }, 2000);
 
                         // Responsive resize
                         window.addEventListener('resize', () => {

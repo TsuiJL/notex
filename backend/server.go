@@ -658,6 +658,13 @@ func (s *Server) handleListNotes(c *gin.Context) {
 		return
 	}
 
+	// Fix titles for notes that have default "笔记" title
+	for i := range notes {
+		if notes[i].Title == "笔记" {
+			notes[i].Title = getTitleForType(notes[i].Type)
+		}
+	}
+
 	c.JSON(http.StatusOK, notes)
 }
 
@@ -1351,6 +1358,13 @@ func (s *Server) handleListPublicNotes(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to list notes"})
 		return
+	}
+
+	// Fix titles for notes that have default "笔记" title
+	for i := range notes {
+		if notes[i].Title == "笔记" {
+			notes[i].Title = getTitleForType(notes[i].Type)
+		}
 	}
 
 	c.JSON(http.StatusOK, notes)
